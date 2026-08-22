@@ -18,8 +18,8 @@ from dataclasses import dataclass
 
 import httpx
 
-from codex_pool.config import CodexPoolConfig
-from codex_pool.store import AccountRecord, AccountStore
+from tidepool.config import TidepoolConfig
+from tidepool.store import AccountRecord, AccountStore
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +79,9 @@ def _credential(record: AccountRecord) -> CodexCredential:
 class CodexPool:
     """Sticky, store-backed credential pool."""
 
-    def __init__(self, store: AccountStore, *, config: CodexPoolConfig | None = None) -> None:
+    def __init__(self, store: AccountStore, *, config: TidepoolConfig | None = None) -> None:
         self._store = store
-        self._config = config or CodexPoolConfig()
+        self._config = config or TidepoolConfig()
 
     # ------------------------------------------------------------------ helpers
 

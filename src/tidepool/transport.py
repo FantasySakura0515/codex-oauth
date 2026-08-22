@@ -2,7 +2,7 @@
 
 Knows nothing about the account pool: it receives a credential, performs one
 request, and either returns or raises a typed error. Rotation decisions belong
-to :mod:`codex_pool.composite`, pool state to :mod:`codex_pool.pool` — that
+to :mod:`tidepool.composite`, pool state to :mod:`tidepool.pool` — that
 split is what lets every rotation scenario be tested without a network.
 
 Imports ``httpx`` only, no vendor SDK.
@@ -17,15 +17,15 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from codex_pool.catalogue import backend_headers
-from codex_pool.config import CodexPoolConfig
-from codex_pool.pool import CodexCredential
-from codex_pool.types import ChatRequest, ChatResponse, StreamChunk, TokenUsage
-from codex_pool.wire import stream_event_to_chunk, to_wire
+from tidepool.catalogue import backend_headers
+from tidepool.config import TidepoolConfig
+from tidepool.pool import CodexCredential
+from tidepool.types import ChatRequest, ChatResponse, StreamChunk, TokenUsage
+from tidepool.wire import stream_event_to_chunk, to_wire
 
 logger = logging.getLogger(__name__)
 
-PROVIDER_NAME = "codex-pool"
+PROVIDER_NAME = "tidepool"
 
 
 class CodexTransportError(RuntimeError):
@@ -82,10 +82,10 @@ class CodexTransport:
     def __init__(
         self,
         *,
-        config: CodexPoolConfig | None = None,
+        config: TidepoolConfig | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        self._config = config or CodexPoolConfig()
+        self._config = config or TidepoolConfig()
         self._client = client
 
     def _headers(self, cred: CodexCredential) -> dict[str, str]:

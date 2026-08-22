@@ -17,9 +17,9 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
-from codex_pool.pool import CodexRefreshFailed
-from codex_pool.transport import CodexAuthExpiredError, CodexUsageLimitError
-from codex_pool.types import ChatRequest, ChatResponse, StreamChunk
+from tidepool.pool import CodexRefreshFailed
+from tidepool.transport import CodexAuthExpiredError, CodexUsageLimitError
+from tidepool.types import ChatRequest, ChatResponse, StreamChunk
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class _Fallback(Protocol):
 
 
 class _Resolver(Protocol):
-    """Reads the live tier map for a credential (``codex_pool.catalogue``)."""
+    """Reads the live tier map for a credential (``tidepool.catalogue``)."""
 
     async def __call__(self, cred: Any, /) -> dict[str, str]: ...
 
@@ -71,7 +71,7 @@ class _Resolver(Protocol):
 class CompositeProvider:
     """Chat over a Codex pool, with optional degradation to a fallback provider."""
 
-    provider_name = "codex-pool"
+    provider_name = "tidepool"
 
     def __init__(
         self,

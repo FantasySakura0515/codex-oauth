@@ -32,7 +32,7 @@ class ChatRequest(BaseModel):
     ``output_schema`` (optional) is a JSON Schema the response must satisfy —
     it rides the Responses ``text.format`` field in OpenAI *strict* structured
     output mode, the same wire shape the Codex CLI's ``--output-schema`` uses.
-    Run it through :func:`codex_pool.wire.strict_schema` first: strict mode
+    Run it through :func:`tidepool.wire.strict_schema` first: strict mode
     rejects schemas that allow additional properties or optional fields.
     """
 

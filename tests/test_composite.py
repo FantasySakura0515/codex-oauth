@@ -7,15 +7,15 @@ import datetime
 
 import pytest
 
-from codex_pool import composite as composite_module
-from codex_pool.composite import CodexPoolDryError, CompositeProvider
-from codex_pool.pool import CodexCredential, CodexRefreshFailed
-from codex_pool.transport import (
+from tidepool import composite as composite_module
+from tidepool.composite import CodexPoolDryError, CompositeProvider
+from tidepool.pool import CodexCredential, CodexRefreshFailed
+from tidepool.transport import (
     CodexAuthExpiredError,
     CodexTransportError,
     CodexUsageLimitError,
 )
-from codex_pool.types import ChatRequest, ChatResponse, Message, Role, StreamChunk
+from tidepool.types import ChatRequest, ChatResponse, Message, Role, StreamChunk
 
 TIERS = {"balanced": "gpt-test"}
 
@@ -71,7 +71,7 @@ class FakeCodex:
         if isinstance(outcome, Exception):
             raise outcome
         return ChatResponse(
-            content="".join(outcome), model_id=model_id, provider="codex-pool"
+            content="".join(outcome), model_id=model_id, provider="tidepool"
         )
 
     async def stream(self, request, cred_obj, *, model_id):
@@ -453,7 +453,7 @@ async def test_a_changed_catalogue_is_logged_loudly(clock, caplog):
 
     await prov.chat(req())
     clock.advance(86400.0)
-    with caplog.at_level("WARNING", logger="codex_pool.composite"):
+    with caplog.at_level("WARNING", logger="tidepool.composite"):
         await prov.chat(req())
 
     assert any("tier models changed" in r.getMessage() for r in caplog.records)

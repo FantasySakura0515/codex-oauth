@@ -1,8 +1,8 @@
 """Pool configuration as a plain dataclass — no settings framework required.
 
 Values come from wherever the embedding application wants: env vars, a config
-file, or the defaults below. ``CodexPoolClient.from_env`` fills one of these
-from the ``CODEX_POOL_*`` variables.
+file, or the defaults below. ``TidepoolClient.from_env`` fills one of these
+from the ``TIDEPOOL_*`` variables.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class CodexPoolConfig:
+class TidepoolConfig:
     """ChatGPT-subscription Codex backend + account pool settings."""
 
     # The backend gates which models an account may use on this value and
@@ -38,4 +38,4 @@ class CodexPoolConfig:
     request_timeout_seconds: float = 120.0
 
 
-__all__ = ["CodexPoolConfig"]
+__all__ = ["TidepoolConfig"]

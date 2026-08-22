@@ -4,7 +4,7 @@ Everything below this module (pool rotation, 429 cooldowns, token refresh,
 model resolution, the Codex wire format, strict-mode structured output) is an
 implementation detail of these methods::
 
-    llm = CodexPoolClient.from_env()
+    llm = TidepoolClient.from_env()
     report = llm.complete_structured(response_model=Report, messages="...")
 
 The methods are synchronous because most application code is. Inside an event
@@ -26,14 +26,14 @@ from typing import Any, Protocol, TypeVar, runtime_checkable
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from codex_pool.catalogue import resolve_tier_models
-from codex_pool.composite import CompositeProvider
-from codex_pool.config import CodexPoolConfig
-from codex_pool.pool import AccountStatus, CodexPool
-from codex_pool.store import AccountStore, JsonFileStore
-from codex_pool.transport import CodexTransport
-from codex_pool.types import ChatRequest, Message, Role
-from codex_pool.wire import drop_nulls, strict_schema
+from tidepool.catalogue import resolve_tier_models
+from tidepool.composite import CompositeProvider
+from tidepool.config import TidepoolConfig
+from tidepool.pool import AccountStatus, CodexPool
+from tidepool.store import AccountStore, JsonFileStore
+from tidepool.transport import CodexTransport
+from tidepool.types import ChatRequest, Message, Role
+from tidepool.wire import drop_nulls, strict_schema
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class _LoopThread:
         # daemon: nothing here needs flushing at shutdown — credential state is
         # committed to the store at the end of every transaction.
         self._thread = threading.Thread(
-            target=self._serve, name="codex-pool-loop", daemon=True
+            target=self._serve, name="tidepool-loop", daemon=True
         )
         self._thread.start()
 
@@ -143,20 +143,41 @@ def _strip_fences(raw: str) -> str:
     return text.strip()
 
 
-def _float_env(name: str) -> float | None:
+def _env(suffix: str) -> str:
+    """Read ``TIDEPOOL_<suffix>``, falling back to the pre-rename spelling.
+
+    ``CODEX_POOL_*`` was the prefix before the tidepool rename; deployments
+    that still set it keep working through the transition, with a nudge in the
+    log rather than a hard break.
+    """
+
+    value = os.environ.get(f"TIDEPOOL_{suffix}", "").strip()
+    if value:
+        return value
+    legacy = os.environ.get(f"CODEX_POOL_{suffix}", "").strip()
+    if legacy:
+        logger.warning(
+            "CODEX_POOL_%s is the pre-rename spelling; rename it to TIDEPOOL_%s",
+            suffix,
+            suffix,
+        )
+    return legacy
+
+
+def _float_env(suffix: str) -> float | None:
     """A numeric environment variable, or ``None`` when unset or unusable.
 
     An unparseable value is a warning rather than a crash: a typo in one
     optional tuning knob must not take the whole backend down.
     """
 
-    raw = os.environ.get(name, "").strip()
+    raw = _env(suffix)
     if not raw:
         return None
     try:
         return float(raw)
     except ValueError:
-        logger.warning("%s=%r is not a number; ignoring it", name, raw)
+        logger.warning("TIDEPOOL_%s=%r is not a number; ignoring it", suffix, raw)
         return None
 
 
@@ -187,39 +208,39 @@ def _to_messages(prompt: Prompt, system: str) -> list[Message]:
 # --------------------------------------------------------------------- client
 
 
-class CodexPoolClient:
+class TidepoolClient:
     """Synchronous LLM client over a ChatGPT-subscription account pool.
 
-    Construct it with a store path — or an :class:`~codex_pool.store.AccountStore`
+    Construct it with a store path — or an :class:`~tidepool.store.AccountStore`
     for a custom backing store — or use :meth:`from_env`.
     """
 
-    provider_name = "codex-pool"
+    provider_name = "tidepool"
 
     def __init__(
         self,
         store: str | Path | AccountStore | None = None,
         *,
         model: str = DEFAULT_MODEL,
-        config: CodexPoolConfig | None = None,
+        config: TidepoolConfig | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         fallback: Any | None = None,
         provider: Any | None = None,
     ) -> None:
         if store is None and provider is None:
-            raise ValueError("CodexPoolClient needs a store path (or a provider)")
+            raise ValueError("TidepoolClient needs a store path (or a provider)")
         if isinstance(store, (str, Path)):
             path = Path(store).expanduser()
             if not path.is_file():
                 # An empty pool is harder to diagnose than a missing file, so
                 # name the file and the command that creates it.
                 raise LLMUnavailableError(
-                    f"codex-pool store not found: {path} — run codex-pool-import first"
+                    f"tidepool store not found: {path} — run tidepool-import first"
                 )
             store = JsonFileStore(path)
         self._store = store
         self._model = model
-        self._config = config or CodexPoolConfig()
+        self._config = config or TidepoolConfig()
         self._timeout = timeout
         self._fallback = fallback
         self._provider = provider
@@ -229,36 +250,37 @@ class CodexPoolClient:
     # ------------------------------------------------------------------ build
 
     @classmethod
-    def from_env(cls, **overrides: Any) -> CodexPoolClient:
-        """Build from ``CODEX_POOL_*`` environment variables.
+    def from_env(cls, **overrides: Any) -> TidepoolClient:
+        """Build from ``TIDEPOOL_*`` environment variables.
 
-        ``CODEX_POOL_STORE`` (required — the credential store path),
-        ``CODEX_POOL_MODEL`` (tier name or concrete slug),
-        ``CODEX_POOL_CLIENT_VERSION`` (match the codex CLI that produced the
-        credentials), ``CODEX_POOL_TIMEOUT`` (seconds per call).
+        ``TIDEPOOL_STORE`` (required — the credential store path),
+        ``TIDEPOOL_MODEL`` (tier name or concrete slug),
+        ``TIDEPOOL_CLIENT_VERSION`` (match the codex CLI that produced the
+        credentials), ``TIDEPOOL_TIMEOUT`` (seconds per call). The pre-rename
+        ``CODEX_POOL_*`` spellings are still read as a fallback.
 
         Raises :class:`LLMUnavailableError` when the store is unset or absent,
         so an application treating this backend as optional catches one error
         and moves on.
         """
 
-        raw_store = os.environ.get("CODEX_POOL_STORE", "").strip()
+        raw_store = _env("STORE")
         if not raw_store and "store" not in overrides:
-            raise LLMUnavailableError("CODEX_POOL_STORE is not set")
+            raise LLMUnavailableError("TIDEPOOL_STORE is not set")
 
         config_kwargs: dict[str, Any] = {}
-        client_version = os.environ.get("CODEX_POOL_CLIENT_VERSION", "").strip()
+        client_version = _env("CLIENT_VERSION")
         if client_version:
             config_kwargs["client_version"] = client_version
-        ttl = _float_env("CODEX_POOL_CATALOGUE_TTL")
+        ttl = _float_env("CATALOGUE_TTL")
         if ttl is not None:
             config_kwargs["catalogue_ttl_seconds"] = ttl
 
         kwargs: dict[str, Any] = {
             "store": raw_store,
-            "model": os.environ.get("CODEX_POOL_MODEL", "").strip() or DEFAULT_MODEL,
-            "config": CodexPoolConfig(**config_kwargs),
-            "timeout": _float_env("CODEX_POOL_TIMEOUT") or DEFAULT_TIMEOUT,
+            "model": _env("MODEL") or DEFAULT_MODEL,
+            "config": TidepoolConfig(**config_kwargs),
+            "timeout": _float_env("TIMEOUT") or DEFAULT_TIMEOUT,
         }
         kwargs.update(overrides)
         return cls(**kwargs)
@@ -304,7 +326,7 @@ class CodexPoolClient:
         else:
             coro.close()
             raise RuntimeError(
-                "CodexPoolClient's synchronous methods block; inside an event loop "
+                "TidepoolClient's synchronous methods block; inside an event loop "
                 "call acomplete()/acomplete_structured()/astream() instead"
             )
         try:
@@ -317,7 +339,7 @@ class CodexPoolClient:
             raise
         except TimeoutError as err:
             raise LLMUnavailableError(
-                f"codex-pool call timed out after {self._timeout}s"
+                f"tidepool call timed out after {self._timeout}s"
             ) from err
         except Exception as err:  # noqa: BLE001 — callers get one failure mode
             raise LLMUnavailableError(str(err) or type(err).__name__) from err
@@ -490,7 +512,7 @@ class CodexPoolClient:
     def close(self) -> None:
         self._blocking(self.aclose(), timeout=30.0)
 
-    def __enter__(self) -> CodexPoolClient:
+    def __enter__(self) -> TidepoolClient:
         return self
 
     def __exit__(self, *_exc: object) -> None:
@@ -500,7 +522,7 @@ class CodexPoolClient:
 __all__ = [
     "DEFAULT_MODEL",
     "DEFAULT_TIMEOUT",
-    "CodexPoolClient",
+    "TidepoolClient",
     "LLMClient",
     "LLMUnavailableError",
     "Prompt",

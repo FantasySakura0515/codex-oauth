@@ -2,6 +2,28 @@
 
 版本號依 [語意化版本](https://semver.org/lang/zh-TW/)。
 
+## 0.3.0
+
+套件改名：**codex-pool → tidepool**。額度窗口像潮汐一樣定期回充，帳號冷卻後
+自己回到池裡——名字跟著機制走，也不再掛著後端的商標。0.2.0 以前的紀錄仍以
+舊名稱呼各物件。
+
+### 破壞性變更
+
+- 發佈名 `codex-pool` → `tidepool`，import 名 `codex_pool` → `tidepool`。
+- `CodexPoolClient` → `TidepoolClient`，`CodexPoolConfig` → `TidepoolConfig`。
+  `provider_name` 隨之改為 `"tidepool"`。
+- 憑證匯入 CLI `codex-pool-import` → `tidepool-import`。
+- 環境變數前綴 `CODEX_POOL_*` → `TIDEPOOL_*`。**過渡期相容**：`from_env()`
+  仍會回讀舊前綴，但寫進 log 提醒改名；下一個 minor 版本移除。
+- Codex 後端專屬的類別（`CodexPool`、`CodexTransport`、`CodexCredential` 等）
+  維持原名——它們描述的是後端，不是套件。
+
+### 不變
+
+- 憑證庫檔案格式與既有路徑照舊；`~/.codex-pool-accounts` 這類舊目錄不需搬家，
+  路徑本來就是明示傳入的。
+
 ## 0.2.0
 
 新增 `CodexPoolClient`——一行接上的 LLM 介面。在此之前呼叫端得自己組

@@ -10,10 +10,10 @@ import threading
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from codex_pool import CodexPoolClient, LLMClient, LLMUnavailableError
-from codex_pool.client import _strip_fences, _to_messages
-from codex_pool.composite import CodexPoolDryError
-from codex_pool.types import ChatResponse, Message, Role, StreamChunk
+from tidepool import LLMClient, LLMUnavailableError, TidepoolClient
+from tidepool.client import _strip_fences, _to_messages
+from tidepool.composite import CodexPoolDryError
+from tidepool.types import ChatResponse, Message, Role, StreamChunk
 
 
 class Report(BaseModel):
@@ -35,7 +35,7 @@ class FakeProvider:
         self.requests.append(req)
         if self.error is not None:
             raise self.error
-        return ChatResponse(content=self.content, model_id="gpt-test", provider="codex-pool")
+        return ChatResponse(content=self.content, model_id="gpt-test", provider="tidepool")
 
     async def stream(self, req):
         self.requests.append(req)
@@ -53,8 +53,8 @@ class FakeProvider:
         return gen()
 
 
-def client_for(provider, **kwargs) -> CodexPoolClient:
-    return CodexPoolClient(provider=provider, **kwargs)
+def client_for(provider, **kwargs) -> TidepoolClient:
+    return TidepoolClient(provider=provider, **kwargs)
 
 
 # ------------------------------------------------------------------ normalising
@@ -181,12 +181,12 @@ def test_pool_dry_becomes_llm_unavailable():
 def test_missing_store_file_is_reported_with_the_path(tmp_path):
     missing = tmp_path / "nope.json"
     with pytest.raises(LLMUnavailableError, match="nope.json"):
-        CodexPoolClient(missing)
+        TidepoolClient(missing)
 
 
 def test_client_without_store_or_provider_is_a_programming_error():
     with pytest.raises(ValueError):
-        CodexPoolClient()
+        TidepoolClient()
 
 
 async def test_sync_call_inside_an_event_loop_refuses():
@@ -231,30 +231,45 @@ def store_file(tmp_path):
 
 
 def test_from_env_without_a_store_says_so(monkeypatch):
+    monkeypatch.delenv("TIDEPOOL_STORE", raising=False)
     monkeypatch.delenv("CODEX_POOL_STORE", raising=False)
-    with pytest.raises(LLMUnavailableError, match="CODEX_POOL_STORE"):
-        CodexPoolClient.from_env()
+    with pytest.raises(LLMUnavailableError, match="TIDEPOOL_STORE"):
+        TidepoolClient.from_env()
+
+
+def test_from_env_reads_the_pre_rename_spelling(monkeypatch, tmp_path):
+    monkeypatch.delenv("TIDEPOOL_STORE", raising=False)
+    monkeypatch.setenv("CODEX_POOL_STORE", str(store_file(tmp_path)))
+    monkeypatch.setenv("CODEX_POOL_MODEL", "strong")
+    assert TidepoolClient.from_env()._model == "strong"
+
+
+def test_from_env_prefers_the_new_spelling(monkeypatch, tmp_path):
+    monkeypatch.setenv("TIDEPOOL_STORE", str(store_file(tmp_path)))
+    monkeypatch.setenv("TIDEPOOL_MODEL", "fast")
+    monkeypatch.setenv("CODEX_POOL_MODEL", "strong")
+    assert TidepoolClient.from_env()._model == "fast"
 
 
 def test_from_env_reads_model_and_client_version(monkeypatch, tmp_path):
-    monkeypatch.setenv("CODEX_POOL_STORE", str(store_file(tmp_path)))
-    monkeypatch.setenv("CODEX_POOL_MODEL", "strong")
-    monkeypatch.setenv("CODEX_POOL_CLIENT_VERSION", "9.9.9")
-    client = CodexPoolClient.from_env()
+    monkeypatch.setenv("TIDEPOOL_STORE", str(store_file(tmp_path)))
+    monkeypatch.setenv("TIDEPOOL_MODEL", "strong")
+    monkeypatch.setenv("TIDEPOOL_CLIENT_VERSION", "9.9.9")
+    client = TidepoolClient.from_env()
     assert client._model == "strong"
     assert client._config.client_version == "9.9.9"
 
 
 def test_from_env_falls_back_on_an_unparseable_timeout(monkeypatch, tmp_path):
-    monkeypatch.setenv("CODEX_POOL_STORE", str(store_file(tmp_path)))
-    monkeypatch.setenv("CODEX_POOL_TIMEOUT", "soon")
-    assert CodexPoolClient.from_env()._timeout == 300.0
+    monkeypatch.setenv("TIDEPOOL_STORE", str(store_file(tmp_path)))
+    monkeypatch.setenv("TIDEPOOL_TIMEOUT", "soon")
+    assert TidepoolClient.from_env()._timeout == 300.0
 
 
 def test_from_env_overrides_win(monkeypatch, tmp_path):
-    monkeypatch.setenv("CODEX_POOL_STORE", str(store_file(tmp_path)))
-    monkeypatch.setenv("CODEX_POOL_MODEL", "strong")
-    assert CodexPoolClient.from_env(model="fast")._model == "fast"
+    monkeypatch.setenv("TIDEPOOL_STORE", str(store_file(tmp_path)))
+    monkeypatch.setenv("TIDEPOOL_MODEL", "strong")
+    assert TidepoolClient.from_env(model="fast")._model == "fast"
 
 
 # ---------------------------------------------------------------------- protocol

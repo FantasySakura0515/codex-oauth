@@ -3,15 +3,15 @@ import json
 import httpx
 from conftest import account, seed
 
-from codex_pool.catalogue import (
+from tidepool.catalogue import (
     FALLBACK_TIER_MODELS,
     fetch_models,
     resolve_tier_models,
     select_tier_models,
 )
-from codex_pool.config import CodexPoolConfig
-from codex_pool.import_cli import import_credentials
-from codex_pool.pool import CodexCredential, CodexPool
+from tidepool.config import TidepoolConfig
+from tidepool.import_cli import import_credentials
+from tidepool.pool import CodexCredential, CodexPool
 
 CRED = CodexCredential(account_id="acct", label="a", access_token="tok", refresh_token="r")
 
@@ -109,7 +109,7 @@ async def test_catalogue_request_carries_client_version():
         seen["params"] = dict(request.url.params)
         return httpx.Response(200, json={"models": []})
 
-    config = CodexPoolConfig(client_version="9.9.9")
+    config = TidepoolConfig(client_version="9.9.9")
     await fetch_models(CRED, config=config, client=client_for(handler))
     assert seen["params"]["client_version"] == "9.9.9"
 

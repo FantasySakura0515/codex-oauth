@@ -4,8 +4,8 @@ import httpx
 import pytest
 from conftest import account, future, past, seed
 
-from codex_pool.config import CodexPoolConfig
-from codex_pool.pool import CodexRefreshFailed
+from tidepool.config import TidepoolConfig
+from tidepool.pool import CodexRefreshFailed
 
 
 async def test_acquire_returns_none_when_empty(make_pool):
@@ -64,7 +64,7 @@ async def test_mark_exhausted_uses_resets_at(make_pool, store):
 
 async def test_mark_exhausted_clamps_to_min(make_pool, store):
     await seed(store, account("a", status="active"))
-    config = CodexPoolConfig(min_cooldown_seconds=300, max_cooldown_seconds=99999)
+    config = TidepoolConfig(min_cooldown_seconds=300, max_cooldown_seconds=99999)
     pool = make_pool(config)
     await pool.mark_exhausted("a", resets_at=future(2))  # below floor
     [status] = await pool.status()
@@ -74,7 +74,7 @@ async def test_mark_exhausted_clamps_to_min(make_pool, store):
 
 async def test_mark_exhausted_passes_through_elapsed_resets(make_pool, store):
     await seed(store, account("a", status="active"))
-    config = CodexPoolConfig(min_cooldown_seconds=300)
+    config = TidepoolConfig(min_cooldown_seconds=300)
     pool = make_pool(config)
     # resets_at already in the past → quota window turned over, don't manufacture a penalty
     await pool.mark_exhausted("a", resets_at=past(5))
