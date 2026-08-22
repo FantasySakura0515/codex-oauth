@@ -13,7 +13,7 @@ from codex_pool.transport import (
     CodexUsageLimitError,
 )
 from codex_pool.types import ChatRequest, Message, Role
-from codex_pool.wire import stream_event_to_chunk, strict_schema, to_wire
+from codex_pool.wire import drop_nulls, stream_event_to_chunk, strict_schema, to_wire
 
 CRED = CodexCredential(account_id="acct", label="a", access_token="tok", refresh_token="r")
 
@@ -67,7 +67,34 @@ def test_strict_schema_tightens_pydantic_output():
     assert "title" not in tightened
     nested = tightened["$defs"]["Inner"]
     assert nested["additionalProperties"] is False
-    assert nested["required"] == ["note"]  # optional made required; null round-trips
+    assert nested["required"] == ["note"]  # optional made required — see drop_nulls
+
+
+def test_drop_nulls_restores_pydantic_defaults():
+    class Model(BaseModel):
+        name: str
+        note: str = "default"
+
+    # strict mode forces every field into `required`, so the model emits null
+    # for the one it had nothing to say about.
+    raw = {"name": "x", "note": None}
+    assert Model.model_validate(drop_nulls(raw)).note == "default"
+
+
+def test_drop_nulls_recurses_into_nested_objects():
+    raw = {"outer": {"keep": 1, "drop": None}, "top": None}
+    assert drop_nulls(raw) == {"outer": {"keep": 1}}
+
+
+def test_drop_nulls_keeps_list_positions():
+    # A null inside a list is a positional value; removing it would shorten the list.
+    raw = {"items": [1, None, 3]}
+    assert drop_nulls(raw) == {"items": [1, None, 3]}
+
+
+def test_drop_nulls_walks_objects_inside_lists():
+    raw = {"items": [{"a": 1, "b": None}]}
+    assert drop_nulls(raw) == {"items": [{"a": 1}]}
 
 
 def test_stream_event_delta():

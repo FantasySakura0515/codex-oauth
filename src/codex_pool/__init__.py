@@ -56,7 +56,7 @@ from codex_pool.types import (
     StreamChunk,
     TokenUsage,
 )
-from codex_pool.wire import strict_schema
+from codex_pool.wire import drop_nulls, strict_schema
 
 __all__ = [
     "AccountRecord",
@@ -82,6 +82,7 @@ __all__ = [
     "StreamChunk",
     "TokenUsage",
     "backend_headers",
+    "drop_nulls",
     "fetch_models",
     "import_credentials",
     "resolve_tier_models",

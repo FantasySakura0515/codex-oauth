@@ -64,19 +64,26 @@ async for chunk in await provider.stream(request):
 結構化輸出（等同 Codex CLI 的 `--output-schema`）：
 
 ```python
-from codex_pool import strict_schema
+import json
+from codex_pool import drop_nulls, strict_schema
 
 request = ChatRequest(
     model="balanced",
     messages=[...],
     output_schema=strict_schema(MyModel.model_json_schema()),
 )
-payload = MyModel.model_validate_json((await provider.chat(request)).content)
+content = (await provider.chat(request)).content
+payload = MyModel.model_validate(drop_nulls(json.loads(content)))
 ```
 
-`strict_schema()` 是必要的一步：OpenAI strict 模式要求每個物件都
-`additionalProperties: false` 且所有欄位都列進 `required`，pydantic 兩者都不產。
-選填欄位會以 `null` 回來，由 pydantic 補回預設值。
+兩個 helper 要成對使用：
+
+- `strict_schema()` 把 pydantic schema 轉成 strict 模式要的形狀
+  （每個物件 `additionalProperties: false`、所有欄位進 `required`）。
+- `drop_nulls()` 把回來的 payload 裡值為 `null` 的鍵拿掉。**這步不能省**：
+  因為所有欄位都被列為必填，模型會對沒話說的欄位回 `null`，而 `null`
+  並不滿足 `note: str = ""` 這種非 nullable 標註——pydantic 會直接報錯，
+  不會套用預設值。拿掉鍵才等於「沒給」，預設值才會生效。
 
 ## 設計要點
 

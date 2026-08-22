@@ -30,9 +30,12 @@ def strict_schema(schema: object) -> object:
     the schema is walked and tightened rather than maintained by hand beside
     the models — a second copy would drift the first time a field is added.
 
-    Making every property required is safe because the validating model is the
-    gate: an optional field arrives as ``null`` and pydantic puts the default
-    back. Nothing downstream can tell the difference.
+    Making every property required changes what comes back: a field the model
+    has nothing to say about arrives as ``null`` rather than being omitted, and
+    ``null`` does **not** satisfy a non-nullable annotation like ``str = ""`` —
+    pydantic raises instead of applying the default. Run the decoded payload
+    through :func:`drop_nulls` before validating; that is what turns the nulls
+    back into "absent, use the default".
     """
 
     if isinstance(schema, list):
@@ -52,6 +55,32 @@ def strict_schema(schema: object) -> object:
         out["additionalProperties"] = False
         out["required"] = list(out["properties"])
     return out
+
+
+def drop_nulls(payload: object) -> object:
+    """Recursively remove ``null``-valued keys from a decoded strict-mode payload.
+
+    The companion to :func:`strict_schema`: it made every property required, so
+    the model emits ``"notes": null`` where it would otherwise have omitted the
+    key. Removing those keys restores "absent", which is what a pydantic model
+    needs to apply the field's default.
+
+    A field declared ``X | None`` with default ``None`` is unaffected — dropping
+    the key yields ``None`` either way. A field that is nullable *and* required
+    (``X | None`` with no default) is the one shape this would break, turning a
+    legitimate ``null`` into a missing-field error; give such a field a default
+    of ``None``, which is what it means anyway.
+
+    List elements are walked but never dropped — a ``null`` inside a list is a
+    positional value, not an omitted key, and removing it would silently
+    shorten the list.
+    """
+
+    if isinstance(payload, dict):
+        return {key: drop_nulls(value) for key, value in payload.items() if value is not None}
+    if isinstance(payload, list):
+        return [drop_nulls(item) for item in payload]
+    return payload
 
 
 def _message_role(role: Role | str) -> str:
@@ -144,4 +173,4 @@ def stream_event_to_chunk(event: dict[str, Any]) -> StreamChunk | None:
     return None
 
 
-__all__ = ["stream_event_to_chunk", "strict_schema", "to_wire"]
+__all__ = ["drop_nulls", "stream_event_to_chunk", "strict_schema", "to_wire"]
