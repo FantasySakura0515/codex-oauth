@@ -1,8 +1,7 @@
 """Codex Responses wire codec.
 
 Pure translation between :mod:`codex_pool.types` and the Codex Responses wire
-format. No IO, no vendor SDK. Structured output rides the ``text.format``
-field — the wire shape behind the Codex CLI's ``--output-schema``.
+format. No IO, no vendor SDK.
 
 There is no ``from_wire``: the endpoint rejects non-streaming requests
 (``400 {"detail":"Stream must be set to true"}``), so every response arrives as
@@ -26,16 +25,12 @@ def strict_schema(schema: object) -> object:
     """A pydantic JSON schema in OpenAI structured-output *strict* form.
 
     Strict mode rejects any object that does not carry ``additionalProperties:
-    false`` and list every property in ``required``. Pydantic emits neither, so
-    the schema is walked and tightened rather than maintained by hand beside
-    the models — a second copy would drift the first time a field is added.
+    false`` and list every property in ``required``; pydantic emits neither, so
+    the schema is walked and tightened rather than kept as a hand-written copy
+    that drifts the first time a field is added.
 
-    Making every property required changes what comes back: a field the model
-    has nothing to say about arrives as ``null`` rather than being omitted, and
-    ``null`` does **not** satisfy a non-nullable annotation like ``str = ""`` —
-    pydantic raises instead of applying the default. Run the decoded payload
-    through :func:`drop_nulls` before validating; that is what turns the nulls
-    back into "absent, use the default".
+    Always pair with :func:`drop_nulls` on the way back —
+    :meth:`~codex_pool.client.CodexPoolClient.complete_structured` does both.
     """
 
     if isinstance(schema, list):
@@ -60,20 +55,16 @@ def strict_schema(schema: object) -> object:
 def drop_nulls(payload: object) -> object:
     """Recursively remove ``null``-valued keys from a decoded strict-mode payload.
 
-    The companion to :func:`strict_schema`: it made every property required, so
-    the model emits ``"notes": null`` where it would otherwise have omitted the
-    key. Removing those keys restores "absent", which is what a pydantic model
-    needs to apply the field's default.
+    :func:`strict_schema` made every property required, so the model answers
+    ``"notes": null`` where it would otherwise have omitted the key. Dropping
+    the key restores "absent", which is what pydantic needs to apply the field's
+    default — ``null`` does not satisfy a non-nullable annotation like
+    ``str = ""``, it raises.
 
-    A field declared ``X | None`` with default ``None`` is unaffected — dropping
-    the key yields ``None`` either way. A field that is nullable *and* required
-    (``X | None`` with no default) is the one shape this would break, turning a
-    legitimate ``null`` into a missing-field error; give such a field a default
-    of ``None``, which is what it means anyway.
-
-    List elements are walked but never dropped — a ``null`` inside a list is a
-    positional value, not an omitted key, and removing it would silently
-    shorten the list.
+    The one shape this breaks is a field that is nullable *and* required
+    (``X | None`` with no default); give it a default of ``None``, which is what
+    it means anyway. List elements are walked but never dropped: a ``null``
+    inside a list is a position, not an omitted key.
     """
 
     if isinstance(payload, dict):

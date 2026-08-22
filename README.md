@@ -1,12 +1,11 @@
 # codex-pool
 
-以 ChatGPT 訂閱額度驅動的 Codex 後端，內建多帳號憑證池與輪替。
+用 ChatGPT 訂閱額度驅動的 LLM client。指向憑證庫、呼叫，結束。
 
-一組 `codex login` 產生的憑證匯入之後，這個套件負責：挑帳號（sticky，用到撞額度才換）、
-撞到 429 時依回應中的精確 `resets_at` 冷卻、access token 過期時 refresh、
-帳號真的死掉時退休它——全部在**一次呼叫內部**完成，呼叫端只看到一個成功或一個錯誤。
-
-每個接縫都是小介面，任何服務都能嵌入。
+挑帳號（sticky，用到撞額度才換）、429 依回應中的精確 `resets_at` 冷卻、
+access token 過期時 refresh、帳號真的死掉時退休它、模型 id 動態解析、
+結構化輸出的 strict 模式處理——全部在**一次呼叫內部**完成，
+呼叫端只看到一個成功、一個 `ValidationError`，或一個 `LLMUnavailableError`。
 
 ## 安裝
 
@@ -14,7 +13,7 @@
 uv add codex-pool          # 或 pip install -e path/to/codex-pool
 ```
 
-## 取得憑證（bootstrap）
+## 取得憑證（一次性）
 
 每個 ChatGPT 帳號一個獨立目錄，各登入一次：
 
@@ -22,68 +21,106 @@ uv add codex-pool          # 或 pip install -e path/to/codex-pool
 CODEX_HOME=~/.codex-pool-accounts/acct-a codex login
 CODEX_HOME=~/.codex-pool-accounts/acct-b codex login
 
-codex-pool-import --store ./codex-accounts.json ~/.codex-pool-accounts/acct-a ~/.codex-pool-accounts/acct-b
+codex-pool-import --store ./codex-accounts.json \
+    ~/.codex-pool-accounts/acct-a ~/.codex-pool-accounts/acct-b
 ```
 
 匯入之後這些目錄就沒用了，可以刪除；**部署環境不需要安裝 codex CLI**。
+多加帳號就多跑一次這兩步，池會自己接手。
 
 > ⚠️ 不要匯入 codex CLI 日常在用的 `CODEX_HOME`（例如預設的 `~/.codex`）。
 > 後端每次 refresh 都會輪替 refresh token，池一旦動手，CLI 手上那份就失效了。
 > 一個帳號給一個專用目錄。
 
-## 使用
+憑證庫檔案裡是明文 bearer 與 refresh token，比照私鑰保管，**不要進版控**。
+
+## 接上
 
 ```python
-from codex_pool import (
-    ChatRequest, CodexPool, CodexPoolConfig, CodexTransport,
-    CompositeProvider, JsonFileStore, Message, Role, resolve_tier_models,
-)
+from codex_pool import CodexPoolClient
 
-config = CodexPoolConfig()
-pool = CodexPool(JsonFileStore("codex-accounts.json"), config=config)
-provider = CompositeProvider(
-    pool=pool,
-    codex=CodexTransport(config=config),
-    resolver=lambda cred: resolve_tier_models(cred, config=config),
-)
+llm = CodexPoolClient("codex-accounts.json")   # 或 CodexPoolClient.from_env()
 
-response = await provider.chat(ChatRequest(
-    model="balanced",                    # tier 名稱，或直接給 "gpt-5.6" 這種 slug
-    messages=[Message(role=Role.USER, content="嗨")],
-))
-print(response.content)
+llm.complete("一句話介紹光合作用")
 ```
 
-串流：
+環境變數版（`from_env()`）：
+
+| 變數 | 說明 |
+|---|---|
+| `CODEX_POOL_STORE` | **必填**，憑證庫路徑 |
+| `CODEX_POOL_MODEL` | tier 名稱（`fast`／`balanced`／`strong`）或具體 slug，預設 `balanced` |
+| `CODEX_POOL_CLIENT_VERSION` | 需與產生憑證的 codex CLI 一致 |
+| `CODEX_POOL_TIMEOUT` | 每次呼叫的秒數上限，預設 300 |
+
+### 結構化輸出
+
+給一個 pydantic model，拿回一個驗證過的物件。schema 由**伺服器強制**
+（Responses strict 模式，等同 Codex CLI 的 `--output-schema`），
+不是把 schema 塞進 prompt 用拜託的：
 
 ```python
-async for chunk in await provider.stream(request):
-    print(chunk.delta, end="")
+from pydantic import BaseModel
+
+class Report(BaseModel):
+    title: str
+    notes: str = ""
+
+report = llm.complete_structured(Report, "幫我寫一份摘要")
 ```
 
-結構化輸出（等同 Codex CLI 的 `--output-schema`）：
+也接受全具名的呼叫形式，方便直接套進既有的 client 協定：
 
 ```python
-import json
-from codex_pool import drop_nulls, strict_schema
-
-request = ChatRequest(
-    model="balanced",
-    messages=[...],
-    output_schema=strict_schema(MyModel.model_json_schema()),
+report = llm.complete_structured(
+    system="你是健康教育老師", messages=[...], response_model=Report
 )
-content = (await provider.chat(request)).content
-payload = MyModel.model_validate(drop_nulls(json.loads(content)))
 ```
 
-兩個 helper 要成對使用：
+### 串流
 
-- `strict_schema()` 把 pydantic schema 轉成 strict 模式要的形狀
-  （每個物件 `additionalProperties: false`、所有欄位進 `required`）。
-- `drop_nulls()` 把回來的 payload 裡值為 `null` 的鍵拿掉。**這步不能省**：
-  因為所有欄位都被列為必填，模型會對沒話說的欄位回 `null`，而 `null`
-  並不滿足 `note: str = ""` 這種非 nullable 標註——pydantic 會直接報錯，
-  不會套用預設值。拿掉鍵才等於「沒給」，預設值才會生效。
+```python
+for delta in llm.stream("寫一首短詩"):
+    print(delta, end="")
+```
+
+### async
+
+方法預設是同步的（多數應用程式碼是同步的），底下橋到一條常駐事件迴圈執行緒。
+在事件迴圈裡改用 `a` 開頭的雙生方法——同步版會直接拒絕執行，
+而不是默默把你的迴圈卡住：
+
+```python
+await llm.acomplete("...")
+await llm.acomplete_structured(Report, "...")
+async for delta in llm.astream("..."):
+    ...
+```
+
+### 錯誤
+
+只有兩種，而且分得很開：
+
+- **`LLMUnavailableError`**——拿不到答案：池乾了、憑證全退休、逾時、後端故障。
+  應用程式接這個就夠了。
+- **`ValidationError`**（pydantic 的）——拿到答案但不合 model。
+  這是「換個 prompt 再試一次」的情況，不是後端壞了，所以刻意不併成同一個。
+
+用協定標型別，應用程式就不綁在這個後端上：
+
+```python
+from codex_pool import LLMClient, LLMUnavailableError
+
+def summarise(llm: LLMClient) -> Report:
+    return llm.complete_structured(Report, "...")
+```
+
+### 池的健康狀況
+
+```python
+for account in llm.status():
+    print(account.label, account.status, account.cooldown_until)
+```
 
 ## 設計要點
 
@@ -99,19 +136,38 @@ payload = MyModel.model_validate(drop_nulls(json.loads(content)))
 | **200 但沒有終結事件＝失敗** | 靜默截斷跟「答案本來就短」無法區分，半截的結構化輸出下游會解析成垃圾 |
 | **模型清單走 `GET /models` 動態解析**，pinned id 只是墊底 | 後端每幾週換一代並淘汰舊 slug，寫死的 id 遲早讓每個請求都 400 |
 | **`client_version` 過舊會警告** | 後端是「靜默隱藏」新模型而不是報錯，不講的話只會表現為 tier 悄悄降了一代 |
+| **strict schema 與 drop-null 成對處理** | strict 模式把所有欄位列為必填，模型會對沒話說的欄位回 `null`，而 `null` 不滿足 `notes: str = ""` 這種非 nullable 標註；拿掉鍵才等於「沒給」，預設值才會生效 |
 
-## Store
+## 底層 API
 
-`CodexPool` 只依賴一個介面：`transaction()`——一個 async context manager，
-交出 `account_id -> AccountRecord` 的可變映射，正常離開就原子提交，拋例外就丟棄。
-池的正確性（同時只有一個 active、refresh 不會兩個人同時做）建立在「transaction 之間互斥」上。
+`CodexPoolClient` 是把下面這些組起來的門面。要自己組（換掉 store、接 fallback
+provider、或在既有的 async 服務裡直接驅動）時，元件都還在：
+
+```python
+from codex_pool import (
+    ChatRequest, CodexPool, CodexPoolConfig, CodexTransport,
+    CompositeProvider, JsonFileStore, Message, Role, resolve_tier_models,
+)
+```
+
+`CodexPool` 只依賴一個介面：`AccountStore.transaction()`——一個 async context
+manager，交出 `account_id -> AccountRecord` 的可變映射，正常離開就原子提交、
+拋例外就丟棄。池的正確性（同時只有一個 active、refresh 不會兩個人同時做）
+建立在「transaction 之間互斥」上。
 
 內建的 `JsonFileStore` 用 `asyncio.Lock` 加 JSON 檔實作，**單一行程內**成立。
 多 worker 部署要自備 DB 版的 store（實作同一個介面即可：
 `SELECT ... FOR UPDATE` 搭配 `active` 的部分唯一索引，就是跨行程的同一件事）。
 
-Store 檔案裡是明文的 bearer 與 refresh token，比照私鑰保管：POSIX 上會設成
-owner-only；Windows 上靠所在目錄的 ACL，跟 `~/.codex/auth.json` 本身一樣。
+## 疑難排解
+
+| 現象 | 原因與處置 |
+|---|---|
+| `codex-pool store not found` | 還沒匯入憑證，或 `CODEX_POOL_STORE` 路徑錯 |
+| `every codex account is cooling or disabled` | 全部帳號都在冷卻或已退休。看 `llm.status()` 的 `status` 與憑證庫的 `last_error`；若是 `refresh failed ... HTTP 401`，重跑 `codex login` 後**重新匯入**即可救回（匯入會清掉退休狀態） |
+| 冷卻時間看起來很長 | 那是後端回報的真實 `resets_at`；訂閱制的額度窗口實測可達數天 |
+| 模型 id 不是預期的那個 | tier 由 `GET /models` 動態解析；`CODEX_POOL_CLIENT_VERSION` 太舊時後端會**靜默隱藏**新世代模型，log 會有警告 |
+| 同步方法在事件迴圈裡拋 `RuntimeError` | 那是刻意的，改用 `acomplete` / `acomplete_structured` / `astream` |
 
 ## 開發
 

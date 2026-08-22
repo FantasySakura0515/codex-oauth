@@ -7,11 +7,11 @@ yielding every account record, committed atomically on clean exit and discarded
 on exception.
 
 :class:`JsonFileStore` is the built-in implementation: an ``asyncio.Lock``
-around a JSON file. Holding the lock for the whole transaction gives the same
-serialization a row lock gives — including across the refresh HTTP call —
-**for a single process**. Multi-worker deployments must bring a DB-backed store
-implementing the same protocol, where ``SELECT ... FOR UPDATE`` and a partial
-unique index on ``active`` do the same job across processes.
+around a JSON file, held for the whole transaction including the refresh HTTP
+call. That is real serialization **within one process**. Multi-worker
+deployments need a DB-backed store implementing the same protocol, where
+``SELECT ... FOR UPDATE`` and a partial unique index on ``active`` do the same
+job across processes.
 """
 
 from __future__ import annotations

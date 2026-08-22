@@ -1,7 +1,8 @@
 """Pool configuration as a plain dataclass — no settings framework required.
 
 Values come from wherever the embedding application wants: env vars, a config
-file, or the defaults below.
+file, or the defaults below. ``CodexPoolClient.from_env`` fills one of these
+from the ``CODEX_POOL_*`` variables.
 """
 
 from __future__ import annotations

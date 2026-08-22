@@ -86,17 +86,14 @@ class CompositeProvider:
     async def _tier_models(self, cred: Any) -> dict[str, str]:
         """Tier→model map, resolved from the live catalogue once per instance.
 
-        Pinned ids rot: the backend gates models on ``client_version`` and
-        retires slugs, and a dead id makes it 400 — which the transport raises
-        as a bare ``CodexTransportError``, a class the rotation deliberately
-        does not catch. So a stale pin is not a degraded mode, it is every
-        request failing. Resolving the live catalogue is what prevents that.
+        Pinned ids rot — the backend retires slugs every few weeks and a dead
+        id 400s every request — so the live catalogue is the real source and
+        the pins are only a floor.
 
-        It runs at most once per provider instance, after a credential exists
-        (the endpoint is authenticated), and its result is memoized whatever it
-        was — success *or* fallback. Retrying a broken catalogue on every
-        request would add a doomed round trip to each one, and a request must
-        never fail because catalogue resolution did.
+        Resolution runs at most once per instance, after a credential exists
+        (the endpoint is authenticated), and the result is memoized whether it
+        succeeded or fell back: a request must never fail, or pay an extra
+        doomed round trip, because catalogue resolution did.
         """
 
         if self._resolved is not None:
@@ -174,20 +171,15 @@ class CompositeProvider:
     async def _refresh_or_disable(self, cred: Any) -> Any:
         """Try one refresh; disable the account only when it is truly dead.
 
-        The token that just failed is passed as ``stale_access_token`` so the
-        pool can take the reuse path: when a racing caller has already rotated
-        this account, the stored token no longer matches and the fresh
-        credential is returned without a second exchange.
+        The failed token is passed as ``stale_access_token`` so the pool can
+        take the reuse path when a racing caller already rotated this account.
 
-        Failure handling is asymmetric on purpose. ``mark_unauthorized`` is
-        terminal — nothing puts a ``disabled`` row back into the rotation
-        except a re-import — so it is reserved for :class:`CodexRefreshFailed`
-        that says it is ``permanent`` (the auth server rejected the
-        credential). A transient failure, or any exception nobody classified,
-        leaves the account exactly as it was: this request keeps rotating or
-        falls back, and the next one retries the account. Disabling on an
-        unclassified error is how one network blip permanently burns a
-        credential.
+        ``mark_unauthorized`` is terminal — only a re-import revives a
+        ``disabled`` row — so it is reserved for a :class:`CodexRefreshFailed`
+        marked ``permanent``. A transient failure, or any exception nobody
+        classified, leaves the account untouched for the next request to retry:
+        retiring on an unclassified error is how one network blip permanently
+        burns a credential.
         """
 
         try:

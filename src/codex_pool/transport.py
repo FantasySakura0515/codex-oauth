@@ -1,11 +1,11 @@
 """Codex transport — one SSE request for one credential.
 
-Knows nothing about the account pool: it receives a credential, performs one request, and either
-returns or raises a typed error. Rotation decisions belong to
-:mod:`codex_pool.composite`; pool state belongs to :mod:`codex_pool.pool`.
-That split is what lets every rotation scenario be tested without a network.
+Knows nothing about the account pool: it receives a credential, performs one
+request, and either returns or raises a typed error. Rotation decisions belong
+to :mod:`codex_pool.composite`, pool state to :mod:`codex_pool.pool` — that
+split is what lets every rotation scenario be tested without a network.
 
-Imports ``httpx`` only — no vendor SDK.
+Imports ``httpx`` only, no vendor SDK.
 """
 
 from __future__ import annotations

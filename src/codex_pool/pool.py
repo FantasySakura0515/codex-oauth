@@ -88,12 +88,11 @@ class CodexPool:
     def _clamp(self, target: datetime.datetime) -> datetime.datetime:
         """Bound a cooldown target to the configured window.
 
-        The ceiling always applies. The floor applies only to targets still in
-        the future: ``min_cooldown_seconds`` exists to stop a hot retry loop
-        when the 429 body says "resets in 2s", but a ``resets_at`` that has
-        *already elapsed* means the quota window has turned over. Flooring that
-        one would manufacture a fresh penalty and hold a usable account out of
-        the pool, so it is passed through and the next ``acquire`` revives it.
+        The ceiling always applies. The floor applies only to future targets —
+        it exists to stop a hot retry loop when the 429 body says "resets in
+        2s". An *already elapsed* ``resets_at`` means the quota window turned
+        over, so it passes through and the next ``acquire`` revives the account
+        rather than serving it a freshly manufactured penalty.
         """
 
         now = utc_now()
@@ -155,16 +154,13 @@ class CodexPool:
 
         The backend rotates the refresh token on every use, so a lost write
         strands a credential on a token nobody holds. The store transaction
-        serializes refreshers against exactly that — and it intentionally spans
-        the HTTP call; moving the POST outside the transaction would silently
-        drop the serialization this relies on.
+        deliberately spans the HTTP call to serialize refreshers against that;
+        moving the POST outside it would silently drop the serialization.
 
         Pass ``stale_access_token`` — the token that just failed — to take the
-        reuse path: if the stored token no longer matches it, another caller
-        already rotated on this caller's behalf and a second exchange would
-        burn a rotation for nothing, so the fresh credential is returned
-        without touching the network. Left ``None``, every caller exchanges
-        unconditionally.
+        reuse path: a stored token that no longer matches means another caller
+        already rotated, so the fresh credential is returned without burning a
+        second rotation. Left ``None``, every caller exchanges unconditionally.
         """
 
         owns_client = client is None
