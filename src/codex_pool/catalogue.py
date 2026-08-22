@@ -26,12 +26,23 @@ logger = logging.getLogger(__name__)
 _LEADING_DIGITS = re.compile(r"\d+")
 
 # Last-resort ids, used only when GET /models cannot be reached. Expect these to
-# rot; the runtime catalogue is the real source.
+# rot; the runtime catalogue is the real source. Last checked 2026-08-22 against
+# client_version 0.147.0.
 FALLBACK_TIER_MODELS: dict[str, str] = {
-    "fast": "gpt-5.6-mini",
-    "balanced": "gpt-5.6",
+    "fast": "gpt-5.4-mini",
+    "balanced": "gpt-5.6-terra",
     "strong": "gpt-5.6-sol",
 }
+
+# The catalogue also lists models built for one Codex feature rather than for
+# general chat. They sort to the cheap end on priority, so without this the
+# ``fast`` tier would quietly route ordinary prompts to a code-review model.
+_NON_CHAT_MARKERS = ("auto-review",)
+
+# OpenAI's naming for the small, cheap variant of a generation. Picking ``fast``
+# by name rather than by "last in the list" survives the catalogue growing a
+# tail entry that is cheap but not a chat model.
+_SMALL_MARKERS = ("-mini", "-nano")
 
 
 @dataclass(frozen=True)
@@ -66,23 +77,36 @@ def select_tier_models(slugs_by_priority: list[tuple[str, int]]) -> dict[str, st
 
     ``slugs_by_priority`` is ``(slug, priority)`` as reported by ``GET /models``,
     where priority 1 is the flagship and larger numbers are progressively
-    cheaper/faster. ``strong`` takes the flagship, ``fast`` the cheapest, and
-    ``balanced`` the one in between — or, when the catalogue is too small to
-    have a middle, the cheapest as well. Collapsing ``balanced`` downward
-    rather than onto the flagship keeps a two-model catalogue from silently
-    routing ordinary traffic at flagship cost.
+    cheaper/faster.
+
+    ``strong`` takes the flagship. ``fast`` prefers a ``-mini``/``-nano`` slug —
+    the cheap end of the list is not automatically a chat model, and the
+    catalogue really does carry feature-specific entries down there — falling
+    back to the cheapest remaining one when the generation has no small
+    variant. ``balanced`` takes the next-best priority after the flagship, or
+    collapses onto ``fast`` when the catalogue is too small to have a middle:
+    downward rather than onto the flagship, so a two-model catalogue does not
+    silently route ordinary traffic at flagship cost.
 
     Returns :data:`FALLBACK_TIER_MODELS` unchanged for an empty catalogue so
     the caller always gets a complete mapping.
     """
 
-    if not slugs_by_priority:
+    ordered = [
+        slug
+        for slug, _ in sorted(slugs_by_priority, key=lambda item: item[1])
+        if not any(marker in slug for marker in _NON_CHAT_MARKERS)
+    ]
+    if not ordered:
         return dict(FALLBACK_TIER_MODELS)
 
-    ordered = [slug for slug, _ in sorted(slugs_by_priority, key=lambda item: item[1])]
     strong = ordered[0]
-    fast = ordered[-1]
-    balanced = ordered[1] if len(ordered) > 2 else fast
+    small = [slug for slug in ordered if any(m in slug for m in _SMALL_MARKERS)]
+    fast = small[0] if small else ordered[-1]
+    # ``balanced`` must not be whatever ``fast`` already is, or the middle tier
+    # stops being a middle.
+    remaining = [slug for slug in ordered if slug != fast]
+    balanced = remaining[1] if len(remaining) > 1 else fast
     return {"fast": fast, "balanced": balanced, "strong": strong}
 
 

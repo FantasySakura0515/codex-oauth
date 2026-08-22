@@ -39,6 +39,39 @@ def test_select_tier_models_empty_returns_fallback():
     assert select_tier_models([]) == FALLBACK_TIER_MODELS
 
 
+def test_fast_prefers_a_small_variant_over_the_cheapest_slot():
+    # The real catalogue (2026-08) ends with codex-auto-review at priority 43 —
+    # cheapest by priority, but built for one Codex feature, not for chat.
+    tiers = select_tier_models(
+        [
+            ("gpt-5.6-sol", 1),
+            ("gpt-5.6-terra", 2),
+            ("gpt-5.4-mini", 23),
+            ("codex-auto-review", 43),
+        ]
+    )
+    assert tiers == {
+        "strong": "gpt-5.6-sol",
+        "balanced": "gpt-5.6-terra",
+        "fast": "gpt-5.4-mini",
+    }
+
+
+def test_non_chat_models_are_never_selected():
+    tiers = select_tier_models([("flagship", 1), ("codex-auto-review", 9)])
+    assert "codex-auto-review" not in tiers.values()
+
+
+def test_catalogue_of_only_non_chat_models_falls_back():
+    assert select_tier_models([("codex-auto-review", 1)]) == FALLBACK_TIER_MODELS
+
+
+def test_balanced_is_never_the_same_as_fast_when_a_middle_exists():
+    tiers = select_tier_models([("a", 1), ("b", 2), ("c-mini", 3), ("d", 4)])
+    assert tiers["fast"] == "c-mini"
+    assert tiers["balanced"] == "b"
+
+
 async def test_fetch_models_parses_catalogue():
     payload = {"models": [{"slug": "a", "priority": 1}, {"slug": "b", "priority": 2}]}
     models = await fetch_models(CRED, client=client_for(lambda r: httpx.Response(200, json=payload)))

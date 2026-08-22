@@ -138,6 +138,7 @@ for account in llm.status():
 | **模型清單走 `GET /models` 動態解析**，pinned id 只是墊底 | 後端每幾週換一代並淘汰舊 slug，寫死的 id 遲早讓每個請求都 400 |
 | **每天自動重查一次模型清單**（`catalogue_ttl_seconds`） | 只查一次的話，長跑不重啟的服務會永遠停在啟動當下那一代；換代時 log 會有 `tier models changed` 警告 |
 | **重查失敗時保留上一次的清單**，不退回 pinned | 上一次的答案來自真實 catalogue，比寫死的 id 新；且失敗一樣記時間戳，壞掉的 catalogue 會等下一個 TTL 再試，不會每個請求都多付一次白工 |
+| **tier 對應會跳過非聊天用的模型**，`fast` 優先挑 `-mini`／`-nano` | catalogue 裡混著單一功能專用的項目（例如 `codex-auto-review`），它們在 priority 上排在最便宜那端；照「清單最後一個就是最便宜」去挑，會把一般提問悄悄送去程式碼審查專用的模型 |
 | **`client_version` 過舊會警告** | 後端是「靜默隱藏」新模型而不是報錯，不講的話只會表現為 tier 悄悄降了一代 |
 | **strict schema 與 drop-null 成對處理** | strict 模式把所有欄位列為必填，模型會對沒話說的欄位回 `null`，而 `null` 不滿足 `notes: str = ""` 這種非 nullable 標註；拿掉鍵才等於「沒給」，預設值才會生效 |
 
