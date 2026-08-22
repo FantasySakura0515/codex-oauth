@@ -202,7 +202,9 @@ async def test_401_raises_auth_expired():
 async def test_truncated_stream_raises():
     # 200, deltas, but no terminal event: silent truncation must not pass as success.
     def handler(req_):
-        return httpx.Response(200, content=sse({"type": "response.output_text.delta", "delta": "half"}))
+        return httpx.Response(
+            200, content=sse({"type": "response.output_text.delta", "delta": "half"})
+        )
 
     with pytest.raises(CodexTransportError, match="terminal event"):
         await transport_for(handler).chat(request(), CRED, model_id="m")

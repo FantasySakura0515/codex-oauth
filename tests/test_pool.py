@@ -2,11 +2,10 @@ import datetime
 
 import httpx
 import pytest
+from conftest import account, future, past, seed
 
 from codex_pool.config import CodexPoolConfig
 from codex_pool.pool import CodexRefreshFailed
-
-from conftest import account, future, past, seed
 
 
 async def test_acquire_returns_none_when_empty(make_pool):
@@ -103,7 +102,9 @@ async def test_refresh_success_rotates_tokens(make_pool, store):
     await seed(store, account("a", status="active"))
 
     def handler(request):
-        return httpx.Response(200, json={"access_token": "new-access", "refresh_token": "new-refresh"})
+        return httpx.Response(
+            200, json={"access_token": "new-access", "refresh_token": "new-refresh"}
+        )
 
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     cred = await make_pool().refresh("a", client=client)
@@ -173,7 +174,9 @@ async def test_refresh_unknown_account_raises_permanent(make_pool):
 
 async def test_refresh_200_without_token_is_transient(make_pool, store):
     await seed(store, account("a", status="active"))
-    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})))
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={}))
+    )
     with pytest.raises(CodexRefreshFailed) as exc:
         await make_pool().refresh("a", client=client)
     assert exc.value.permanent is False

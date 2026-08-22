@@ -7,6 +7,8 @@ build/
 .pytest_cache/
 uv.lock
 
-# The credential store holds bearer and refresh tokens in the clear.
+# The credential store holds bearer and refresh tokens in the clear. Better yet,
+# keep it outside the repo entirely.
 codex-accounts.json
 *.accounts.json
+.codex-pool-accounts/

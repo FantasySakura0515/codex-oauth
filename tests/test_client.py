@@ -10,10 +10,10 @@ import threading
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from codex_pool import CodexPoolClient, LLMClient, LLMUnavailableError
 from codex_pool.client import _strip_fences, _to_messages
 from codex_pool.composite import CodexPoolDryError
 from codex_pool.types import ChatResponse, Message, Role, StreamChunk
-from codex_pool import CodexPoolClient, LLMClient, LLMUnavailableError
 
 
 class Report(BaseModel):

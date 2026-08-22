@@ -54,7 +54,9 @@ class AccountStore(Protocol):
     correctness (single active account, one refresh at a time) rests on it.
     """
 
-    def transaction(self) -> contextlib.AbstractAsyncContextManager[MutableMapping[str, AccountRecord]]: ...
+    def transaction(
+        self,
+    ) -> contextlib.AbstractAsyncContextManager[MutableMapping[str, AccountRecord]]: ...
 
 
 def _to_json(record: AccountRecord) -> dict:

@@ -1,5 +1,7 @@
 # codex-pool
 
+[![CI](https://github.com/FantasySakura0515/codex-pool/actions/workflows/ci.yml/badge.svg)](https://github.com/FantasySakura0515/codex-pool/actions/workflows/ci.yml)
+
 用 ChatGPT 訂閱額度驅動的 LLM client。指向憑證庫、呼叫，結束。
 
 挑帳號（sticky，用到撞額度才換）、429 依回應中的精確 `resets_at` 冷卻、
@@ -178,9 +180,17 @@ manager，交出 `account_id -> AccountRecord` 的可變映射，正常離開就
 ```bash
 uv sync
 uv run pytest -q
+uv run ruff check src tests
 ```
 
+CI 跑 Linux 的 3.11／3.12／3.13 加 Windows 3.12。Windows 有自己的一格是因為
+這裡最花時間的兩個 bug——預設編碼與 CRLF 行尾——在 Linux 上都不會重現。
+
+版本變更見 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 授權與定位
+
+程式碼以 [MIT](LICENSE) 授權。
 
 這個套件模擬 Codex CLI 的身分（`originator: codex_cli_rs`）呼叫 ChatGPT 訂閱端點，
 屬於**非官方 API 用法**，端點與 wire 格式都可能無預警變動。適合自用、開發、

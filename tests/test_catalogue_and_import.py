@@ -1,6 +1,7 @@
 import json
 
 import httpx
+from conftest import account, seed
 
 from codex_pool.catalogue import (
     FALLBACK_TIER_MODELS,
@@ -11,8 +12,6 @@ from codex_pool.catalogue import (
 from codex_pool.config import CodexPoolConfig
 from codex_pool.import_cli import import_credentials
 from codex_pool.pool import CodexCredential, CodexPool
-
-from conftest import account, seed
 
 CRED = CodexCredential(account_id="acct", label="a", access_token="tok", refresh_token="r")
 
@@ -74,13 +73,17 @@ def test_balanced_is_never_the_same_as_fast_when_a_middle_exists():
 
 async def test_fetch_models_parses_catalogue():
     payload = {"models": [{"slug": "a", "priority": 1}, {"slug": "b", "priority": 2}]}
-    models = await fetch_models(CRED, client=client_for(lambda r: httpx.Response(200, json=payload)))
+    models = await fetch_models(
+        CRED, client=client_for(lambda r: httpx.Response(200, json=payload))
+    )
     assert [m.slug for m in models] == ["a", "b"]
 
 
 async def test_fetch_models_skips_malformed_entries_not_whole_catalogue():
     payload = {"models": [{"slug": "good", "priority": 1}, {"no_slug": True}, "junk"]}
-    models = await fetch_models(CRED, client=client_for(lambda r: httpx.Response(200, json=payload)))
+    models = await fetch_models(
+        CRED, client=client_for(lambda r: httpx.Response(200, json=payload))
+    )
     assert [m.slug for m in models] == ["good"]
 
 
@@ -117,7 +120,15 @@ async def test_catalogue_request_carries_client_version():
 def write_auth(home, account_id="acct-1", access="a", refresh="r"):
     home.mkdir(parents=True, exist_ok=True)
     (home / "auth.json").write_text(
-        json.dumps({"tokens": {"account_id": account_id, "access_token": access, "refresh_token": refresh}}),
+        json.dumps(
+            {
+                "tokens": {
+                    "account_id": account_id,
+                    "access_token": access,
+                    "refresh_token": refresh,
+                }
+            }
+        ),
         encoding="utf-8",
     )
     return home

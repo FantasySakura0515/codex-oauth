@@ -56,7 +56,7 @@ class CodexModel:
     minimal_client_version: str
 
 
-def backend_headers(cred: "CodexCredential", config: CodexPoolConfig) -> dict[str, str]:
+def backend_headers(cred: CodexCredential, config: CodexPoolConfig) -> dict[str, str]:
     """Headers every Codex backend call needs.
 
     Shared with the transport: the backend rejects or degrades requests that
@@ -111,7 +111,7 @@ def select_tier_models(slugs_by_priority: list[tuple[str, int]]) -> dict[str, st
 
 
 async def fetch_models(
-    cred: "CodexCredential",
+    cred: CodexCredential,
     *,
     config: CodexPoolConfig | None = None,
     client: httpx.AsyncClient | None = None,
@@ -211,7 +211,7 @@ def _warn_on_gated_models(models: list[CodexModel], cfg: CodexPoolConfig) -> Non
 
 
 async def resolve_tier_models(
-    cred: "CodexCredential",
+    cred: CodexCredential,
     *,
     config: CodexPoolConfig | None = None,
     client: httpx.AsyncClient | None = None,
