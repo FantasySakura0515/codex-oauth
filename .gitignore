@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+uv.lock
+
+# The credential store holds bearer and refresh tokens in the clear.
+codex-accounts.json
+*.accounts.json
