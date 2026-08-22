@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codex-pool"
-version = "0.1.0"
-description = "ChatGPT-subscription Codex backend with a rotating multi-account credential pool"
+version = "0.2.0"
+description = "An LLM client backed by ChatGPT subscription quota, with a rotating multi-account credential pool"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "FantasySakura0515" }]
