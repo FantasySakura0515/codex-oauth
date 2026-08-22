@@ -42,6 +42,13 @@ def test_to_wire_hoists_system_messages():
     assert body["store"] is False
 
 
+def test_to_wire_marks_assistant_history_as_output_text():
+    # Responses API 對 assistant 歷史只收 output_text，混用 input_text 會 400
+    body = to_wire(request(), model_id="m")
+    types = [item["content"][0]["type"] for item in body["input"]]
+    assert types == ["input_text", "output_text"]
+
+
 def test_to_wire_includes_schema_when_given():
     body = to_wire(request(output_schema={"type": "object"}), model_id="m")
     assert body["text"]["format"]["strict"] is True

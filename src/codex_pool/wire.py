@@ -93,11 +93,15 @@ def to_wire(req: ChatRequest, *, model_id: str) -> dict[str, Any]:
         if message.role == Role.SYSTEM:
             instructions_parts.append(message.content)
             continue
+        role = _message_role(message.role)
+        # Responses API：使用者輸入用 input_text，助理歷史訊息必須用 output_text，
+        # 混用會直接 400（"Invalid value: 'input_text'"）。
+        part_type = "output_text" if role == "assistant" else "input_text"
         input_items.append(
             {
                 "type": "message",
-                "role": _message_role(message.role),
-                "content": [{"type": "input_text", "text": message.content}],
+                "role": role,
+                "content": [{"type": part_type, "text": message.content}],
             }
         )
 
