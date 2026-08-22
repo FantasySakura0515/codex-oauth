@@ -52,6 +52,7 @@ llm.complete("一句話介紹光合作用")
 | `CODEX_POOL_MODEL` | tier 名稱（`fast`／`balanced`／`strong`）或具體 slug，預設 `balanced` |
 | `CODEX_POOL_CLIENT_VERSION` | 需與產生憑證的 codex CLI 一致 |
 | `CODEX_POOL_TIMEOUT` | 每次呼叫的秒數上限，預設 300 |
+| `CODEX_POOL_CATALOGUE_TTL` | 多久重查一次模型清單，預設 86400（一天）；設 0 表示只查一次 |
 
 ### 結構化輸出
 
@@ -135,6 +136,8 @@ for account in llm.status():
 | **`CodexTransportError` 不觸發輪替** | 它代表後端打嗝，不代表這個帳號有問題；輪替只會多付一次錢又退休健康的帳號 |
 | **200 但沒有終結事件＝失敗** | 靜默截斷跟「答案本來就短」無法區分，半截的結構化輸出下游會解析成垃圾 |
 | **模型清單走 `GET /models` 動態解析**，pinned id 只是墊底 | 後端每幾週換一代並淘汰舊 slug，寫死的 id 遲早讓每個請求都 400 |
+| **每天自動重查一次模型清單**（`catalogue_ttl_seconds`） | 只查一次的話，長跑不重啟的服務會永遠停在啟動當下那一代；換代時 log 會有 `tier models changed` 警告 |
+| **重查失敗時保留上一次的清單**，不退回 pinned | 上一次的答案來自真實 catalogue，比寫死的 id 新；且失敗一樣記時間戳，壞掉的 catalogue 會等下一個 TTL 再試，不會每個請求都多付一次白工 |
 | **`client_version` 過舊會警告** | 後端是「靜默隱藏」新模型而不是報錯，不講的話只會表現為 tier 悄悄降了一代 |
 | **strict schema 與 drop-null 成對處理** | strict 模式把所有欄位列為必填，模型會對沒話說的欄位回 `null`，而 `null` 不滿足 `notes: str = ""` 這種非 nullable 標註；拿掉鍵才等於「沒給」，預設值才會生效 |
 

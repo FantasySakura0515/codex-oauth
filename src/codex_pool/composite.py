@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
@@ -21,6 +22,16 @@ from codex_pool.transport import CodexAuthExpiredError, CodexUsageLimitError
 from codex_pool.types import ChatRequest, ChatResponse, StreamChunk
 
 logger = logging.getLogger(__name__)
+
+#: One day. The backend ships a new generation every few weeks, so a service
+#: that never restarts would otherwise stay a generation behind forever.
+DEFAULT_CATALOGUE_TTL_SECONDS = 86400.0
+
+
+def _monotonic() -> float:
+    """Indirection so tests can move the clock without sleeping."""
+
+    return time.monotonic()
 
 
 class CodexPoolDryError(RuntimeError):
@@ -70,6 +81,7 @@ class CompositeProvider:
         fallback: _Fallback | None = None,
         tier_models: dict[str, str] | None = None,
         resolver: _Resolver | None = None,
+        catalogue_ttl_seconds: float = DEFAULT_CATALOGUE_TTL_SECONDS,
     ) -> None:
         self._pool = pool
         self._codex = codex
@@ -81,45 +93,71 @@ class CompositeProvider:
         # No resolver → the pinned map *is* the answer, resolved from the
         # start. Tests take this path so none of them need a network.
         self._resolved: dict[str, str] | None = None if resolver else self._pinned
+        self._resolved_at: float | None = None
+        self._ttl = catalogue_ttl_seconds
         self._resolve_lock = asyncio.Lock()
 
+    def _needs_resolving(self) -> bool:
+        if self._resolved is None:
+            return True
+        if self._resolver is None or self._ttl <= 0:
+            # Nothing to ask, or re-resolution deliberately switched off.
+            return False
+        return (
+            self._resolved_at is None
+            or _monotonic() - self._resolved_at >= self._ttl
+        )
+
     async def _tier_models(self, cred: Any) -> dict[str, str]:
-        """Tier→model map, resolved from the live catalogue once per instance.
+        """Tier→model map, re-read from the live catalogue every ``ttl``.
 
         Pinned ids rot — the backend retires slugs every few weeks and a dead
         id 400s every request — so the live catalogue is the real source and
-        the pins are only a floor.
+        the pins are only a floor. A service that runs for months has to pick
+        up new generations on its own, which is what the TTL is for; it
+        defaults to a day.
 
-        Resolution runs at most once per instance, after a credential exists
-        (the endpoint is authenticated), and the result is memoized whether it
-        succeeded or fell back: a request must never fail, or pay an extra
-        doomed round trip, because catalogue resolution did.
+        Resolution happens after a credential exists (the endpoint is
+        authenticated) and the answer is cached whether it succeeded or not: a
+        request must never fail, or pay an extra doomed round trip, because
+        catalogue resolution did. A refresh that fails keeps the map already in
+        use rather than falling back to the pins — the previous answer came
+        from the live catalogue and is the better of the two.
         """
 
-        if self._resolved is not None:
-            return self._resolved
+        if not self._needs_resolving():
+            return self._resolved  # type: ignore[return-value]
         async with self._resolve_lock:
-            # Re-check: everything queued behind the lock during the first
-            # resolve is already served by it.
-            if self._resolved is not None:
-                return self._resolved
+            # Re-check: everything queued behind the lock while one caller
+            # resolved is already served by that result.
+            if not self._needs_resolving():
+                return self._resolved  # type: ignore[return-value]
             resolver = self._resolver
             if resolver is None:  # pragma: no cover — implied by _resolved is None
                 self._resolved = self._pinned
                 return self._resolved
+            previous = self._resolved
             try:
                 resolved = await resolver(cred)
             except Exception as exc:  # noqa: BLE001 — never fail a request over this
-                logger.warning(
-                    "codex catalogue unresolved (%s); using pinned tier ids %s",
-                    exc,
-                    sorted(self._pinned.values()),
-                )
+                logger.warning("codex catalogue unresolved (%s)", exc)
                 resolved = {}
-            # Fill any tier the catalogue did not cover, so a partial answer
-            # cannot leave a tier mapping to its own name.
-            self._resolved = {**self._pinned, **resolved}
-            logger.info("codex tier models resolved: %s", self._resolved)
+            if resolved:
+                # Fill any tier the catalogue did not cover, so a partial
+                # answer cannot leave a tier mapping to its own name.
+                current = {**self._pinned, **resolved}
+            else:
+                current = previous if previous is not None else dict(self._pinned)
+            # Stamped even on failure, so a broken catalogue is retried on the
+            # next TTL rather than on every request.
+            self._resolved_at = _monotonic()
+            if previous is None:
+                logger.info("codex tier models resolved: %s", current)
+            elif current != previous:
+                # Worth a warning: every log line above this one names the old
+                # generation.
+                logger.warning("codex tier models changed: %s -> %s", previous, current)
+            self._resolved = current
         return self._resolved
 
     @staticmethod
@@ -288,4 +326,8 @@ class CompositeProvider:
                     break
 
 
-__all__ = ["CodexPoolDryError", "CompositeProvider"]
+__all__ = [
+    "DEFAULT_CATALOGUE_TTL_SECONDS",
+    "CodexPoolDryError",
+    "CompositeProvider",
+]

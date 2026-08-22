@@ -143,6 +143,23 @@ def _strip_fences(raw: str) -> str:
     return text.strip()
 
 
+def _float_env(name: str) -> float | None:
+    """A numeric environment variable, or ``None`` when unset or unusable.
+
+    An unparseable value is a warning rather than a crash: a typo in one
+    optional tuning knob must not take the whole backend down.
+    """
+
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("%s=%r is not a number; ignoring it", name, raw)
+        return None
+
+
 _ROLES = {role.value for role in Role}
 
 
@@ -229,27 +246,19 @@ class CodexPoolClient:
         if not raw_store and "store" not in overrides:
             raise LLMUnavailableError("CODEX_POOL_STORE is not set")
 
+        config_kwargs: dict[str, Any] = {}
         client_version = os.environ.get("CODEX_POOL_CLIENT_VERSION", "").strip()
-        config = CodexPoolConfig(
-            **({"client_version": client_version} if client_version else {})
-        )
-
-        raw_timeout = os.environ.get("CODEX_POOL_TIMEOUT", "").strip()
-        try:
-            timeout = float(raw_timeout) if raw_timeout else DEFAULT_TIMEOUT
-        except ValueError:
-            logger.warning(
-                "CODEX_POOL_TIMEOUT=%r is not a number; using %s",
-                raw_timeout,
-                DEFAULT_TIMEOUT,
-            )
-            timeout = DEFAULT_TIMEOUT
+        if client_version:
+            config_kwargs["client_version"] = client_version
+        ttl = _float_env("CODEX_POOL_CATALOGUE_TTL")
+        if ttl is not None:
+            config_kwargs["catalogue_ttl_seconds"] = ttl
 
         kwargs: dict[str, Any] = {
             "store": raw_store,
             "model": os.environ.get("CODEX_POOL_MODEL", "").strip() or DEFAULT_MODEL,
-            "config": config,
-            "timeout": timeout,
+            "config": CodexPoolConfig(**config_kwargs),
+            "timeout": _float_env("CODEX_POOL_TIMEOUT") or DEFAULT_TIMEOUT,
         }
         kwargs.update(overrides)
         return cls(**kwargs)
@@ -272,6 +281,7 @@ class CodexPoolClient:
                 resolver=lambda cred: resolve_tier_models(
                     cred, config=self._config, client=self._http
                 ),
+                catalogue_ttl_seconds=self._config.catalogue_ttl_seconds,
             )
         return self._provider
 

@@ -7,6 +7,7 @@ import datetime
 
 import pytest
 
+from codex_pool import composite as composite_module
 from codex_pool.composite import CodexPoolDryError, CompositeProvider
 from codex_pool.pool import CodexCredential, CodexRefreshFailed
 from codex_pool.transport import (
@@ -312,3 +313,147 @@ async def test_concrete_slug_passes_through():
     request = ChatRequest(model="gpt-5.6-sol", messages=[Message(role=Role.USER, content="x")])
     await provider(pool, codex).chat(request)
     assert codex.calls == [("a", "gpt-5.6-sol")]
+
+
+# ------------------------------------------------------- catalogue refresh
+
+
+class Clock:
+    """A hand-cranked replacement for ``time.monotonic``."""
+
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    fake = Clock()
+    monkeypatch.setattr(composite_module, "_monotonic", fake)
+    return fake
+
+
+def counting_resolver(*answers):
+    """Returns a resolver that hands out ``answers`` in order, then repeats the last."""
+
+    calls = {"n": 0}
+
+    async def resolver(_cred):
+        index = min(calls["n"], len(answers) - 1)
+        calls["n"] += 1
+        answer = answers[index]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    resolver.calls = calls
+    return resolver
+
+
+async def test_catalogue_is_reread_after_the_ttl(clock):
+    resolver = counting_resolver({"balanced": "gen-1"}, {"balanced": "gen-2"})
+    pool = FakePool([cred("a"), cred("a")])
+    codex = FakeCodex([["1"], ["2"]])
+    prov = CompositeProvider(
+        pool=pool, codex=codex, tier_models=TIERS, resolver=resolver,
+        catalogue_ttl_seconds=86400.0,
+    )
+
+    await prov.chat(req())
+    clock.advance(86400.0)
+    await prov.chat(req())
+
+    assert resolver.calls["n"] == 2
+    # The second request already runs on the new generation.
+    assert codex.calls == [("a", "gen-1"), ("a", "gen-2")]
+
+
+async def test_catalogue_is_not_reread_within_the_ttl(clock):
+    resolver = counting_resolver({"balanced": "gen-1"}, {"balanced": "gen-2"})
+    pool = FakePool([cred("a"), cred("a")])
+    codex = FakeCodex([["1"], ["2"]])
+    prov = CompositeProvider(
+        pool=pool, codex=codex, tier_models=TIERS, resolver=resolver,
+        catalogue_ttl_seconds=86400.0,
+    )
+
+    await prov.chat(req())
+    clock.advance(86399.0)
+    await prov.chat(req())
+
+    assert resolver.calls["n"] == 1
+    assert codex.calls == [("a", "gen-1"), ("a", "gen-1")]
+
+
+async def test_failed_refresh_keeps_the_live_map_not_the_pins(clock):
+    # The previous answer came from the live catalogue; the pins are older
+    # still, so falling back to them on a blip would be a downgrade.
+    resolver = counting_resolver({"balanced": "gen-1"}, RuntimeError("catalogue down"))
+    pool = FakePool([cred("a"), cred("a")])
+    codex = FakeCodex([["1"], ["2"]])
+    prov = CompositeProvider(
+        pool=pool, codex=codex, tier_models=TIERS, resolver=resolver,
+        catalogue_ttl_seconds=86400.0,
+    )
+
+    await prov.chat(req())
+    clock.advance(86400.0)
+    await prov.chat(req())
+
+    assert codex.calls == [("a", "gen-1"), ("a", "gen-1")]
+
+
+async def test_failed_refresh_waits_a_full_ttl_before_retrying(clock):
+    # Otherwise a broken catalogue adds a doomed round trip to every request.
+    resolver = counting_resolver({"balanced": "gen-1"}, RuntimeError("down"))
+    pool = FakePool([cred("a"), cred("a"), cred("a")])
+    codex = FakeCodex([["1"], ["2"], ["3"]])
+    prov = CompositeProvider(
+        pool=pool, codex=codex, tier_models=TIERS, resolver=resolver,
+        catalogue_ttl_seconds=86400.0,
+    )
+
+    await prov.chat(req())
+    clock.advance(86400.0)
+    await prov.chat(req())   # refresh attempted, fails
+    await prov.chat(req())   # must not attempt again immediately
+
+    assert resolver.calls["n"] == 2
+
+
+async def test_ttl_of_zero_pins_the_first_answer(clock):
+    resolver = counting_resolver({"balanced": "gen-1"}, {"balanced": "gen-2"})
+    pool = FakePool([cred("a"), cred("a")])
+    codex = FakeCodex([["1"], ["2"]])
+    prov = CompositeProvider(
+        pool=pool, codex=codex, tier_models=TIERS, resolver=resolver,
+        catalogue_ttl_seconds=0,
+    )
+
+    await prov.chat(req())
+    clock.advance(10_000_000.0)
+    await prov.chat(req())
+
+    assert resolver.calls["n"] == 1
+
+
+async def test_a_changed_catalogue_is_logged_loudly(clock, caplog):
+    resolver = counting_resolver({"balanced": "gen-1"}, {"balanced": "gen-2"})
+    pool = FakePool([cred("a"), cred("a")])
+    codex = FakeCodex([["1"], ["2"]])
+    prov = CompositeProvider(
+        pool=pool, codex=codex, tier_models=TIERS, resolver=resolver,
+        catalogue_ttl_seconds=86400.0,
+    )
+
+    await prov.chat(req())
+    clock.advance(86400.0)
+    with caplog.at_level("WARNING", logger="codex_pool.composite"):
+        await prov.chat(req())
+
+    assert any("tier models changed" in r.getMessage() for r in caplog.records)

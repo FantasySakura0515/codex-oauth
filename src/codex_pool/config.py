@@ -25,6 +25,11 @@ class CodexPoolConfig:
     # return still-throttled accounts to the pool early.
     min_cooldown_seconds: float = 60.0
     max_cooldown_seconds: float = 2592000.0
+    # How long a resolved tier->model map is trusted before the live catalogue
+    # is read again. The backend ships a new generation every few weeks, so a
+    # long-running service that never re-reads stays a generation behind until
+    # it restarts. 0 or less pins the first answer for the process lifetime.
+    catalogue_ttl_seconds: float = 86400.0
     api_base: str = "https://chatgpt.com/backend-api/codex"
     auth_base: str = "https://auth.openai.com"
     # The Codex CLI's public OAuth client id — credentials imported from
