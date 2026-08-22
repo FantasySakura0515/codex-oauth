@@ -1,12 +1,12 @@
-"""tidepool — an LLM client backed by ChatGPT subscription quota.
+"""codex-oauth — an LLM client backed by ChatGPT subscription quota.
 
 Point it at a credential store and call it. Account rotation, 429 cooldowns
 keyed to the backend's own reset time, OAuth refresh, live model resolution and
 strict-mode structured output all happen inside a single call::
 
-    from tidepool import TidepoolClient
+    from codex_oauth import CodexOAuthClient
 
-    llm = TidepoolClient.from_env()          # or TidepoolClient("accounts.json")
+    llm = CodexOAuthClient.from_env()          # or CodexOAuthClient("accounts.json")
 
     text = llm.complete("一句話介紹光合作用")
     report = llm.complete_structured(response_model=Report, messages="...")
@@ -18,7 +18,7 @@ strict-mode structured output all happen inside a single call::
 that does not fit ``response_model`` raises pydantic's ``ValidationError``
 instead, which callers can retry at the prompt level.
 
-Bootstrap credentials with ``tidepool-import`` (see :mod:`tidepool.import_cli`).
+Bootstrap credentials with ``codex-oauth-import`` (see :mod:`codex_oauth.import_cli`).
 
 The stack underneath — :class:`CodexPool`, :class:`CodexTransport`,
 :class:`CompositeProvider`, the wire codec, the catalogue reader — stays
@@ -26,7 +26,7 @@ exported for services that drive it directly, e.g. to plug a DB-backed
 :class:`AccountStore` into a multi-worker deployment.
 """
 
-from tidepool.catalogue import (
+from codex_oauth.catalogue import (
     FALLBACK_TIER_MODELS,
     CodexModel,
     backend_headers,
@@ -34,31 +34,31 @@ from tidepool.catalogue import (
     resolve_tier_models,
     select_tier_models,
 )
-from tidepool.client import (
+from codex_oauth.client import (
     DEFAULT_MODEL,
     DEFAULT_TIMEOUT,
+    CodexOAuthClient,
     LLMClient,
     LLMUnavailableError,
     Prompt,
-    TidepoolClient,
 )
-from tidepool.composite import CodexPoolDryError, CompositeProvider
-from tidepool.config import TidepoolConfig
-from tidepool.import_cli import import_credentials
-from tidepool.pool import (
+from codex_oauth.composite import CodexPoolDryError, CompositeProvider
+from codex_oauth.config import CodexOAuthConfig
+from codex_oauth.import_cli import import_credentials
+from codex_oauth.pool import (
     AccountStatus,
     CodexCredential,
     CodexPool,
     CodexRefreshFailed,
 )
-from tidepool.store import AccountRecord, AccountStore, JsonFileStore
-from tidepool.transport import (
+from codex_oauth.store import AccountRecord, AccountStore, JsonFileStore
+from codex_oauth.transport import (
     CodexAuthExpiredError,
     CodexTransport,
     CodexTransportError,
     CodexUsageLimitError,
 )
-from tidepool.types import (
+from codex_oauth.types import (
     ChatRequest,
     ChatResponse,
     Message,
@@ -66,11 +66,11 @@ from tidepool.types import (
     StreamChunk,
     TokenUsage,
 )
-from tidepool.wire import drop_nulls, strict_schema
+from codex_oauth.wire import drop_nulls, strict_schema
 
 __all__ = [
     # The interface most callers need.
-    "TidepoolClient",
+    "CodexOAuthClient",
     "LLMClient",
     "LLMUnavailableError",
     "Prompt",
@@ -80,7 +80,7 @@ __all__ = [
     "AccountRecord",
     "AccountStatus",
     "AccountStore",
-    "TidepoolConfig",
+    "CodexOAuthConfig",
     "JsonFileStore",
     "import_credentials",
     # The stack underneath, for callers assembling their own.

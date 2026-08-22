@@ -1,13 +1,14 @@
-# tidepool
+# codex-oauth
 
-[![CI](https://github.com/FantasySakura0515/tidepool/actions/workflows/ci.yml/badge.svg)](https://github.com/FantasySakura0515/tidepool/actions/workflows/ci.yml)
+[![CI](https://github.com/FantasySakura0515/codex-oauth/actions/workflows/ci.yml/badge.svg)](https://github.com/FantasySakura0515/codex-oauth/actions/workflows/ci.yml)
 
 用 ChatGPT **訂閱額度**（非 API 金鑰）驅動的 LLM client。把多個帳號的憑證匯進一個池，
 指向它、呼叫、結束——帳號輪替、429 冷卻、token refresh、模型解析、strict 模式結構化輸出
 全部在一次呼叫內部完成，呼叫端只會看到一個成功、一個 `ValidationError`，
 或一個 `LLMUnavailableError`。
 
-名字取自潮池：額度窗口像潮汐一樣定期回充，冷卻中的帳號時間到了自己回到池裡。
+名字直說取用方式：以 `codex login` 留下的 **OAuth 憑證**呼叫 Codex 端點，
+額度算在 ChatGPT 訂閱上，全程沒有 API 金鑰。
 （0.3.0 前叫 `codex-pool`；遷移事項見 [CHANGELOG.md](CHANGELOG.md)。）
 
 ## 架構
@@ -16,13 +17,13 @@
 
 | 層 | 模組 | 說明 |
 |---|---|---|
-| **門面** | `client.py` | `TidepoolClient`：同步/async 的 `complete`／`complete_structured`／`stream`，對外唯一需要認識的東西 |
+| **門面** | `client.py` | `CodexOAuthClient`：同步/async 的 `complete`／`complete_structured`／`stream`，對外唯一需要認識的東西 |
 | 組合 | `composite.py` | `CompositeProvider`：把池、模型解析與可選的 fallback provider 串成一條呼叫鏈 |
 | 帳號池 | `pool.py`、`store.py` | `CodexPool`：sticky 選帳號、429 冷卻、refresh 輪替、退休判定；憑證放 `JsonFileStore`（可換成自己的 `AccountStore`） |
 | 後端通訊 | `transport.py`、`wire.py` | Codex Responses 端點的 HTTP／SSE 與 wire 格式、strict schema 處理 |
 | 模型清單 | `catalogue.py` | `GET /models` 動態解析 tier→模型，每天重查一次 |
 
-呼叫路徑：`TidepoolClient → CompositeProvider → CodexPool（AccountStore）→ CodexTransport`。
+呼叫路徑：`CodexOAuthClient → CompositeProvider → CodexPool（AccountStore）→ CodexTransport`。
 `Codex*` 開頭的類別描述的是後端（Codex Responses 端點），不隨套件改名。
 
 ## 快速開始
@@ -30,7 +31,7 @@
 前置：Python 3.11+、[codex CLI](https://github.com/openai/codex)（只在匯入憑證那一步需要）。
 
 ```bash
-uv add tidepool          # 或 pip install -e path/to/tidepool
+uv add codex-oauth          # 或 pip install -e path/to/codex-oauth
 ```
 
 ### 匯入憑證（一次性）
@@ -38,11 +39,11 @@ uv add tidepool          # 或 pip install -e path/to/tidepool
 每個 ChatGPT 帳號一個獨立目錄，各登入一次，然後匯成一個憑證庫檔：
 
 ```bash
-CODEX_HOME=~/.tidepool-accounts/acct-a codex login
-CODEX_HOME=~/.tidepool-accounts/acct-b codex login
+CODEX_HOME=~/.codex-oauth-accounts/acct-a codex login
+CODEX_HOME=~/.codex-oauth-accounts/acct-b codex login
 
-tidepool-import --store ./accounts.json \
-    ~/.tidepool-accounts/acct-a ~/.tidepool-accounts/acct-b
+codex-oauth-import --store ./accounts.json \
+    ~/.codex-oauth-accounts/acct-a ~/.codex-oauth-accounts/acct-b
 ```
 
 匯入之後這些目錄就沒用了，可以刪除；**部署環境不需要安裝 codex CLI**。
@@ -57,9 +58,9 @@ tidepool-import --store ./accounts.json \
 ### 呼叫
 
 ```python
-from tidepool import TidepoolClient
+from codex_oauth import CodexOAuthClient
 
-llm = TidepoolClient("accounts.json")   # 或 TidepoolClient.from_env()
+llm = CodexOAuthClient("accounts.json")   # 或 CodexOAuthClient.from_env()
 
 llm.complete("一句話介紹光合作用")
 ```
@@ -68,11 +69,11 @@ llm.complete("一句話介紹光合作用")
 
 | 變數 | 說明 |
 |---|---|
-| `TIDEPOOL_STORE` | **必填**，憑證庫路徑 |
-| `TIDEPOOL_MODEL` | tier 名稱（`fast`／`balanced`／`strong`）或具體 slug，預設 `balanced` |
-| `TIDEPOOL_CLIENT_VERSION` | 需與產生憑證的 codex CLI 一致 |
-| `TIDEPOOL_TIMEOUT` | 每次呼叫的秒數上限，預設 300 |
-| `TIDEPOOL_CATALOGUE_TTL` | 多久重查一次模型清單，預設 86400（一天）；設 0 表示只查一次 |
+| `CODEX_OAUTH_STORE` | **必填**，憑證庫路徑 |
+| `CODEX_OAUTH_MODEL` | tier 名稱（`fast`／`balanced`／`strong`）或具體 slug，預設 `balanced` |
+| `CODEX_OAUTH_CLIENT_VERSION` | 需與產生憑證的 codex CLI 一致 |
+| `CODEX_OAUTH_TIMEOUT` | 每次呼叫的秒數上限，預設 300 |
+| `CODEX_OAUTH_CATALOGUE_TTL` | 多久重查一次模型清單，預設 86400（一天）；設 0 表示只查一次 |
 
 ## 使用
 
@@ -132,7 +133,7 @@ async for delta in llm.astream("..."):
 用協定標型別，應用程式就不綁在這個後端上：
 
 ```python
-from tidepool import LLMClient, LLMUnavailableError
+from codex_oauth import LLMClient, LLMUnavailableError
 
 def summarise(llm: LLMClient) -> Report:
     return llm.complete_structured(Report, "...")
@@ -166,13 +167,13 @@ for account in llm.status():
 
 ## 底層 API
 
-`TidepoolClient` 是把底下各層組起來的門面。要自己組（換掉 store、接 fallback
+`CodexOAuthClient` 是把底下各層組起來的門面。要自己組（換掉 store、接 fallback
 provider、或在既有的 async 服務裡直接驅動）時，元件都還在：
 
 ```python
-from tidepool import (
+from codex_oauth import (
     ChatRequest, CodexPool, CodexTransport, CompositeProvider,
-    JsonFileStore, Message, Role, TidepoolConfig, resolve_tier_models,
+    JsonFileStore, Message, Role, CodexOAuthConfig, resolve_tier_models,
 )
 ```
 
@@ -189,12 +190,12 @@ manager，交出 `account_id -> AccountRecord` 的可變映射，正常離開就
 
 | 現象 | 原因與處置 |
 |---|---|
-| `tidepool store not found` | 還沒匯入憑證，或 `TIDEPOOL_STORE` 路徑錯 |
+| `codex-oauth store not found` | 還沒匯入憑證，或 `CODEX_OAUTH_STORE` 路徑錯 |
 | `every codex account is cooling or disabled` | 全部帳號都在冷卻或已退休。看 `llm.status()` 的 `status` 與憑證庫的 `last_error`；若是 `refresh failed ... HTTP 401`，重跑 `codex login` 後**重新匯入**即可救回（匯入會清掉退休狀態） |
 | 冷卻時間看起來很長 | 那是後端回報的真實 `resets_at`；訂閱制的額度窗口實測可達數天 |
-| 模型 id 不是預期的那個 | tier 由 `GET /models` 動態解析；`TIDEPOOL_CLIENT_VERSION` 太舊時後端會**靜默隱藏**新世代模型，log 會有警告 |
+| 模型 id 不是預期的那個 | tier 由 `GET /models` 動態解析；`CODEX_OAUTH_CLIENT_VERSION` 太舊時後端會**靜默隱藏**新世代模型，log 會有警告 |
 | 同步方法在事件迴圈裡拋 `RuntimeError` | 那是刻意的，改用 `acomplete` / `acomplete_structured` / `astream` |
-| log 出現 `CODEX_POOL_* is the pre-rename spelling` | 環境變數還是 0.2.x 的舊前綴，改成 `TIDEPOOL_*` 即可；過渡期功能不受影響 |
+| log 出現 `CODEX_POOL_* is the pre-rename spelling` | 環境變數還是 0.2.x 的舊前綴，改成 `CODEX_OAUTH_*` 即可；過渡期功能不受影響 |
 
 ## 測試與開發
 
@@ -213,16 +214,16 @@ Windows 有自己的一格是因為這裡最花時間的兩個 bug——預設�
 ## 專案結構
 
 ```
-src/tidepool/
-  client.py       TidepoolClient 門面（同步/async、from_env）
+src/codex_oauth/
+  client.py       CodexOAuthClient 門面（同步/async、from_env）
   composite.py    CompositeProvider：池 + 模型解析 + fallback 的呼叫鏈
   pool.py         CodexPool：帳號輪替、冷卻、refresh、退休
   store.py        AccountStore 介面與 JsonFileStore
   transport.py    Codex Responses 端點的 HTTP／SSE
   catalogue.py    模型清單動態解析（tier → slug）
   wire.py         wire 格式、strict schema 與 drop-null
-  import_cli.py   tidepool-import 憑證匯入 CLI
-  config.py       TidepoolConfig
+  import_cli.py   codex-oauth-import 憑證匯入 CLI
+  config.py       CodexOAuthConfig
 tests/            單元與整合測試（respx 假後端）
 ```
 

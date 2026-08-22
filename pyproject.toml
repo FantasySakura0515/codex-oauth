@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tidepool"
+name = "codex-oauth"
 version = "0.3.0"
 description = "An LLM client backed by ChatGPT subscription quota, with a rotating multi-account credential pool"
 readme = "README.md"
@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.scripts]
-tidepool-import = "tidepool.import_cli:main"
+codex-oauth-import = "codex_oauth.import_cli:main"
 
 [dependency-groups]
 dev = [
@@ -38,7 +38,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/tidepool"]
+packages = ["src/codex_oauth"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

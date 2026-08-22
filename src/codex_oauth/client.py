@@ -4,7 +4,7 @@ Everything below this module (pool rotation, 429 cooldowns, token refresh,
 model resolution, the Codex wire format, strict-mode structured output) is an
 implementation detail of these methods::
 
-    llm = TidepoolClient.from_env()
+    llm = CodexOAuthClient.from_env()
     report = llm.complete_structured(response_model=Report, messages="...")
 
 The methods are synchronous because most application code is. Inside an event
@@ -26,14 +26,14 @@ from typing import Any, Protocol, TypeVar, runtime_checkable
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from tidepool.catalogue import resolve_tier_models
-from tidepool.composite import CompositeProvider
-from tidepool.config import TidepoolConfig
-from tidepool.pool import AccountStatus, CodexPool
-from tidepool.store import AccountStore, JsonFileStore
-from tidepool.transport import CodexTransport
-from tidepool.types import ChatRequest, Message, Role
-from tidepool.wire import drop_nulls, strict_schema
+from codex_oauth.catalogue import resolve_tier_models
+from codex_oauth.composite import CompositeProvider
+from codex_oauth.config import CodexOAuthConfig
+from codex_oauth.pool import AccountStatus, CodexPool
+from codex_oauth.store import AccountStore, JsonFileStore
+from codex_oauth.transport import CodexTransport
+from codex_oauth.types import ChatRequest, Message, Role
+from codex_oauth.wire import drop_nulls, strict_schema
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class _LoopThread:
         # daemon: nothing here needs flushing at shutdown — credential state is
         # committed to the store at the end of every transaction.
         self._thread = threading.Thread(
-            target=self._serve, name="tidepool-loop", daemon=True
+            target=self._serve, name="codex-oauth-loop", daemon=True
         )
         self._thread.start()
 
@@ -144,20 +144,20 @@ def _strip_fences(raw: str) -> str:
 
 
 def _env(suffix: str) -> str:
-    """Read ``TIDEPOOL_<suffix>``, falling back to the pre-rename spelling.
+    """Read ``CODEX_OAUTH_<suffix>``, falling back to the pre-rename spelling.
 
-    ``CODEX_POOL_*`` was the prefix before the tidepool rename; deployments
+    ``CODEX_POOL_*`` was the prefix before the codex-oauth rename; deployments
     that still set it keep working through the transition, with a nudge in the
     log rather than a hard break.
     """
 
-    value = os.environ.get(f"TIDEPOOL_{suffix}", "").strip()
+    value = os.environ.get(f"CODEX_OAUTH_{suffix}", "").strip()
     if value:
         return value
     legacy = os.environ.get(f"CODEX_POOL_{suffix}", "").strip()
     if legacy:
         logger.warning(
-            "CODEX_POOL_%s is the pre-rename spelling; rename it to TIDEPOOL_%s",
+            "CODEX_POOL_%s is the pre-rename spelling; rename it to CODEX_OAUTH_%s",
             suffix,
             suffix,
         )
@@ -177,7 +177,7 @@ def _float_env(suffix: str) -> float | None:
     try:
         return float(raw)
     except ValueError:
-        logger.warning("TIDEPOOL_%s=%r is not a number; ignoring it", suffix, raw)
+        logger.warning("CODEX_OAUTH_%s=%r is not a number; ignoring it", suffix, raw)
         return None
 
 
@@ -208,39 +208,39 @@ def _to_messages(prompt: Prompt, system: str) -> list[Message]:
 # --------------------------------------------------------------------- client
 
 
-class TidepoolClient:
+class CodexOAuthClient:
     """Synchronous LLM client over a ChatGPT-subscription account pool.
 
-    Construct it with a store path — or an :class:`~tidepool.store.AccountStore`
+    Construct it with a store path — or an :class:`~codex_oauth.store.AccountStore`
     for a custom backing store — or use :meth:`from_env`.
     """
 
-    provider_name = "tidepool"
+    provider_name = "codex-oauth"
 
     def __init__(
         self,
         store: str | Path | AccountStore | None = None,
         *,
         model: str = DEFAULT_MODEL,
-        config: TidepoolConfig | None = None,
+        config: CodexOAuthConfig | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         fallback: Any | None = None,
         provider: Any | None = None,
     ) -> None:
         if store is None and provider is None:
-            raise ValueError("TidepoolClient needs a store path (or a provider)")
+            raise ValueError("CodexOAuthClient needs a store path (or a provider)")
         if isinstance(store, (str, Path)):
             path = Path(store).expanduser()
             if not path.is_file():
                 # An empty pool is harder to diagnose than a missing file, so
                 # name the file and the command that creates it.
                 raise LLMUnavailableError(
-                    f"tidepool store not found: {path} — run tidepool-import first"
+                    f"codex-oauth store not found: {path} — run codex-oauth-import first"
                 )
             store = JsonFileStore(path)
         self._store = store
         self._model = model
-        self._config = config or TidepoolConfig()
+        self._config = config or CodexOAuthConfig()
         self._timeout = timeout
         self._fallback = fallback
         self._provider = provider
@@ -250,13 +250,13 @@ class TidepoolClient:
     # ------------------------------------------------------------------ build
 
     @classmethod
-    def from_env(cls, **overrides: Any) -> TidepoolClient:
-        """Build from ``TIDEPOOL_*`` environment variables.
+    def from_env(cls, **overrides: Any) -> CodexOAuthClient:
+        """Build from ``CODEX_OAUTH_*`` environment variables.
 
-        ``TIDEPOOL_STORE`` (required — the credential store path),
-        ``TIDEPOOL_MODEL`` (tier name or concrete slug),
-        ``TIDEPOOL_CLIENT_VERSION`` (match the codex CLI that produced the
-        credentials), ``TIDEPOOL_TIMEOUT`` (seconds per call). The pre-rename
+        ``CODEX_OAUTH_STORE`` (required — the credential store path),
+        ``CODEX_OAUTH_MODEL`` (tier name or concrete slug),
+        ``CODEX_OAUTH_CLIENT_VERSION`` (match the codex CLI that produced the
+        credentials), ``CODEX_OAUTH_TIMEOUT`` (seconds per call). The pre-rename
         ``CODEX_POOL_*`` spellings are still read as a fallback.
 
         Raises :class:`LLMUnavailableError` when the store is unset or absent,
@@ -266,7 +266,7 @@ class TidepoolClient:
 
         raw_store = _env("STORE")
         if not raw_store and "store" not in overrides:
-            raise LLMUnavailableError("TIDEPOOL_STORE is not set")
+            raise LLMUnavailableError("CODEX_OAUTH_STORE is not set")
 
         config_kwargs: dict[str, Any] = {}
         client_version = _env("CLIENT_VERSION")
@@ -279,7 +279,7 @@ class TidepoolClient:
         kwargs: dict[str, Any] = {
             "store": raw_store,
             "model": _env("MODEL") or DEFAULT_MODEL,
-            "config": TidepoolConfig(**config_kwargs),
+            "config": CodexOAuthConfig(**config_kwargs),
             "timeout": _float_env("TIMEOUT") or DEFAULT_TIMEOUT,
         }
         kwargs.update(overrides)
@@ -326,7 +326,7 @@ class TidepoolClient:
         else:
             coro.close()
             raise RuntimeError(
-                "TidepoolClient's synchronous methods block; inside an event loop "
+                "CodexOAuthClient's synchronous methods block; inside an event loop "
                 "call acomplete()/acomplete_structured()/astream() instead"
             )
         try:
@@ -339,7 +339,7 @@ class TidepoolClient:
             raise
         except TimeoutError as err:
             raise LLMUnavailableError(
-                f"tidepool call timed out after {self._timeout}s"
+                f"codex-oauth call timed out after {self._timeout}s"
             ) from err
         except Exception as err:  # noqa: BLE001 — callers get one failure mode
             raise LLMUnavailableError(str(err) or type(err).__name__) from err
@@ -512,7 +512,7 @@ class TidepoolClient:
     def close(self) -> None:
         self._blocking(self.aclose(), timeout=30.0)
 
-    def __enter__(self) -> TidepoolClient:
+    def __enter__(self) -> CodexOAuthClient:
         return self
 
     def __exit__(self, *_exc: object) -> None:
@@ -522,7 +522,7 @@ class TidepoolClient:
 __all__ = [
     "DEFAULT_MODEL",
     "DEFAULT_TIMEOUT",
-    "TidepoolClient",
+    "CodexOAuthClient",
     "LLMClient",
     "LLMUnavailableError",
     "Prompt",

@@ -126,7 +126,7 @@ class JsonFileStore:
         except (OSError, ValueError):
             # An unreadable store must not silently become an empty pool that a
             # later commit overwrites: that would destroy every credential.
-            raise RuntimeError(f"tidepool store {self.path} is unreadable") from None
+            raise RuntimeError(f"codex-oauth store {self.path} is unreadable") from None
         accounts = {}
         for raw in payload.get("accounts", []) if isinstance(payload, dict) else []:
             record = _from_json(raw) if isinstance(raw, dict) else None

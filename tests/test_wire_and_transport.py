@@ -4,16 +4,16 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
-from tidepool.config import TidepoolConfig
-from tidepool.pool import CodexCredential
-from tidepool.transport import (
+from codex_oauth.config import CodexOAuthConfig
+from codex_oauth.pool import CodexCredential
+from codex_oauth.transport import (
     CodexAuthExpiredError,
     CodexTransport,
     CodexTransportError,
     CodexUsageLimitError,
 )
-from tidepool.types import ChatRequest, Message, Role
-from tidepool.wire import drop_nulls, stream_event_to_chunk, strict_schema, to_wire
+from codex_oauth.types import ChatRequest, Message, Role
+from codex_oauth.wire import drop_nulls, stream_event_to_chunk, strict_schema, to_wire
 
 CRED = CodexCredential(account_id="acct", label="a", access_token="tok", refresh_token="r")
 
@@ -139,7 +139,7 @@ def sse(*events: dict) -> bytes:
 
 def transport_for(handler) -> CodexTransport:
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    return CodexTransport(config=TidepoolConfig(), client=client)
+    return CodexTransport(config=CodexOAuthConfig(), client=client)
 
 
 async def test_chat_aggregates_stream():

@@ -16,10 +16,10 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from tidepool.config import TidepoolConfig
+from codex_oauth.config import CodexOAuthConfig
 
 if TYPE_CHECKING:  # circular at runtime: pool imports nothing from here
-    from tidepool.pool import CodexCredential
+    from codex_oauth.pool import CodexCredential
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class CodexModel:
     minimal_client_version: str
 
 
-def backend_headers(cred: CodexCredential, config: TidepoolConfig) -> dict[str, str]:
+def backend_headers(cred: CodexCredential, config: CodexOAuthConfig) -> dict[str, str]:
     """Headers every Codex backend call needs.
 
     Shared with the transport: the backend rejects or degrades requests that
@@ -113,12 +113,12 @@ def select_tier_models(slugs_by_priority: list[tuple[str, int]]) -> dict[str, st
 async def fetch_models(
     cred: CodexCredential,
     *,
-    config: TidepoolConfig | None = None,
+    config: CodexOAuthConfig | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> list[CodexModel]:
     """Return the catalogue, or an empty list when it cannot be read."""
 
-    cfg = config or TidepoolConfig()
+    cfg = config or CodexOAuthConfig()
     owns_client = client is None
     http = client or httpx.AsyncClient(timeout=cfg.request_timeout_seconds)
     try:
@@ -187,7 +187,7 @@ def _version_tuple(value: str) -> tuple[int, ...]:
     return tuple(parts)
 
 
-def _warn_on_gated_models(models: list[CodexModel], cfg: TidepoolConfig) -> None:
+def _warn_on_gated_models(models: list[CodexModel], cfg: CodexOAuthConfig) -> None:
     """Flag models the configured ``client_version`` is too old to use.
 
     The backend hides gated models instead of erroring, so a stale
@@ -213,7 +213,7 @@ def _warn_on_gated_models(models: list[CodexModel], cfg: TidepoolConfig) -> None
 async def resolve_tier_models(
     cred: CodexCredential,
     *,
-    config: TidepoolConfig | None = None,
+    config: CodexOAuthConfig | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> dict[str, str]:
     """Map the live catalogue onto tiers, falling back to the pinned ids."""

@@ -1,6 +1,6 @@
 """One call through the fully assembled stack — client, pool, transport, store.
 
-Only HTTP is faked. This is what proves the wiring ``TidepoolClient`` does on
+Only HTTP is faked. This is what proves the wiring ``CodexOAuthClient`` does on
 the caller's behalf actually holds together; every other client test injects a
 provider and skips it.
 """
@@ -10,7 +10,7 @@ import json
 import httpx
 import respx
 
-from tidepool import TidepoolClient
+from codex_oauth import CodexOAuthClient
 
 
 def sse(*events: dict) -> bytes:
@@ -65,7 +65,7 @@ def test_structured_call_end_to_end(tmp_path):
         title: str
         notes: str = ""
 
-    with TidepoolClient(store_file(tmp_path), model="strong") as llm:
+    with CodexOAuthClient(store_file(tmp_path), model="strong") as llm:
         report = llm.complete_structured(Report, "go", system="be brief")
 
         # The catalogue answered, so "strong" became a live slug rather than
@@ -81,12 +81,12 @@ def test_structured_call_end_to_end(tmp_path):
 
 @respx.mock
 def test_pool_dry_surfaces_as_llm_unavailable(tmp_path):
-    from tidepool import LLMUnavailableError
+    from codex_oauth import LLMUnavailableError
 
     path = tmp_path / "accounts.json"
     path.write_text('{"accounts": []}', encoding="utf-8")
 
-    with TidepoolClient(path) as llm:
+    with CodexOAuthClient(path) as llm:
         try:
             llm.complete("hi")
         except LLMUnavailableError as err:

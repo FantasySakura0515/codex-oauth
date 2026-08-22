@@ -4,17 +4,18 @@
 
 ## 0.3.0
 
-套件改名：**codex-pool → tidepool**。額度窗口像潮汐一樣定期回充，帳號冷卻後
-自己回到池裡——名字跟著機制走，也不再掛著後端的商標。0.2.0 以前的紀錄仍以
-舊名稱呼各物件。
+套件改名：**codex-pool → codex-oauth**。名字直說取用方式——以 `codex login`
+留下的 OAuth 憑證呼叫，額度算在 ChatGPT 訂閱上，沒有 API 金鑰；「pool」是
+實作細節，不再放進名字。（改名過程中短暫叫過 `tidepool`，未曾發佈。）
+0.2.0 以前的紀錄仍以舊名稱呼各物件。
 
 ### 破壞性變更
 
-- 發佈名 `codex-pool` → `tidepool`，import 名 `codex_pool` → `tidepool`。
-- `CodexPoolClient` → `TidepoolClient`，`CodexPoolConfig` → `TidepoolConfig`。
-  `provider_name` 隨之改為 `"tidepool"`。
-- 憑證匯入 CLI `codex-pool-import` → `tidepool-import`。
-- 環境變數前綴 `CODEX_POOL_*` → `TIDEPOOL_*`。**過渡期相容**：`from_env()`
+- 發佈名 `codex-pool` → `codex-oauth`，import 名 `codex_pool` → `codex_oauth`。
+- `CodexPoolClient` → `CodexOAuthClient`，`CodexPoolConfig` → `CodexOAuthConfig`。
+  `provider_name` 隨之改為 `"codex-oauth"`。
+- 憑證匯入 CLI `codex-pool-import` → `codex-oauth-import`。
+- 環境變數前綴 `CODEX_POOL_*` → `CODEX_OAUTH_*`。**過渡期相容**：`from_env()`
   仍會回讀舊前綴，但寫進 log 提醒改名；下一個 minor 版本移除。
 - Codex 後端專屬的類別（`CodexPool`、`CodexTransport`、`CodexCredential` 等）
   維持原名——它們描述的是後端，不是套件。

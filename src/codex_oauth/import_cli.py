@@ -2,8 +2,8 @@
 
 Run once per credential directory, produced by::
 
-    CODEX_HOME=~/.tidepool-accounts/acct-a codex login
-    CODEX_HOME=~/.tidepool-accounts/acct-b codex login
+    CODEX_HOME=~/.codex-oauth-accounts/acct-a codex login
+    CODEX_HOME=~/.codex-oauth-accounts/acct-b codex login
 
 The directories are a bootstrap source only. After import the pool owns refresh
 and never reads or writes them again — the backend rotates refresh tokens on
@@ -23,8 +23,8 @@ import json
 import logging
 from pathlib import Path
 
-from tidepool.pool import utc_now
-from tidepool.store import AccountRecord, AccountStore, JsonFileStore
+from codex_oauth.pool import utc_now
+from codex_oauth.store import AccountRecord, AccountStore, JsonFileStore
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ async def import_credentials(dirs: list[Path], store: AccountStore) -> list[str]
 
 
 def main() -> None:
-    """Console entry point (``tidepool-import``)."""
+    """Console entry point (``codex-oauth-import``)."""
 
     parser = argparse.ArgumentParser(
         description="Import codex CLI credential directories into the account pool."

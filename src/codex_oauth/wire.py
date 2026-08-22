@@ -1,6 +1,6 @@
 """Codex Responses wire codec.
 
-Pure translation between :mod:`tidepool.types` and the Codex Responses wire
+Pure translation between :mod:`codex_oauth.types` and the Codex Responses wire
 format. No IO, no vendor SDK.
 
 There is no ``from_wire``: the endpoint rejects non-streaming requests
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from tidepool.types import ChatRequest, Role, StreamChunk, TokenUsage
+from codex_oauth.types import ChatRequest, Role, StreamChunk, TokenUsage
 
 # Annotation-only keywords OpenAI strict mode rejects or ignores.
 _SCHEMA_ANNOTATIONS = frozenset({"title", "default", "examples", "$comment"})
@@ -30,7 +30,7 @@ def strict_schema(schema: object) -> object:
     that drifts the first time a field is added.
 
     Always pair with :func:`drop_nulls` on the way back —
-    :meth:`~tidepool.client.TidepoolClient.complete_structured` does both.
+    :meth:`~codex_oauth.client.CodexOAuthClient.complete_structured` does both.
     """
 
     if isinstance(schema, list):

@@ -2,8 +2,8 @@ import datetime
 
 import pytest
 
-from tidepool.pool import CodexPool
-from tidepool.store import AccountRecord, JsonFileStore
+from codex_oauth.pool import CodexPool
+from codex_oauth.store import AccountRecord, JsonFileStore
 
 
 @pytest.fixture
